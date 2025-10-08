@@ -235,7 +235,7 @@ inline bool intersect_treelet(const T& treelet, const rtm::Ray& ray, rtm::Hit& h
 		else
 		{
 		#if 1
-			rtm::IntersectionTriangle tris[rtm::FTB::MAX_PRIMS];
+			rtm::IntersectionTriangle tris[rtm::FTB::MAX_TRIS];
 			uint tri_count = rtm::decompress(treelet.prims[current_entry.data.triangle_index], 42, tris);
 			for(uint i = 0; i < tri_count; ++i)
 				if(_intersect(tris[i].tri, ray, hit))
@@ -350,20 +350,20 @@ inline bool intersect(const T* treelets, const rtm::Ray& ray, rtm::Hit& hit)
 	return hit_found;
 }
 
-inline bool intersect(const rtm::BVH2::Node* nodes, const rtm::Triangle* tris, const rtm::Ray& ray, rtm::Hit& hit, uint& steps, bool first_hit = false)
+inline bool intersect(const rtm::BVH::Node* nodes, const rtm::Triangle* tris, const rtm::Ray& ray, rtm::Hit& hit, uint& steps, bool first_hit = false)
 {
 	rtm::vec3 inv_d = rtm::vec3(1.0f) / ray.d;
 
 	struct NodeStackEntry
 	{
 		float t;
-		rtm::BVH2::Node::Data data;
+		rtm::BVHPtr data;
 	};
 
 	NodeStackEntry node_stack[32];
 	uint32_t node_stack_size = 1u;
 	node_stack[0].t = _intersect(nodes[0].aabb, ray, inv_d);
-	node_stack[0].data = nodes[0].data;
+	node_stack[0].data = nodes[0].ptr;
 
 	bool found_hit = false;
 	do
@@ -372,31 +372,31 @@ inline bool intersect(const rtm::BVH2::Node* nodes, const rtm::Triangle* tris, c
 		if(current_entry.t >= hit.t) continue;
 
 	POP_SKIP:
-		if(!current_entry.data.is_leaf)
+		if(current_entry.data.is_int)
 		{
-			uint child_index = current_entry.data.child_index;
+			uint child_index = current_entry.data.child_idx;
 			float t0 = _intersect(nodes[child_index + 0].aabb, ray, inv_d);
 			float t1 = _intersect(nodes[child_index + 1].aabb, ray, inv_d);
 			if(t0 < hit.t || t1 < hit.t)
 			{
 				if(t0 < t1)
 				{
-					current_entry = {t0, nodes[child_index + 0].data};
-					if(t1 < hit.t)  node_stack[node_stack_size++] = {t1, nodes[child_index + 1].data};
+					current_entry = {t0, nodes[child_index + 0].ptr};
+					if(t1 < hit.t)  node_stack[node_stack_size++] = {t1, nodes[child_index + 1].ptr};
 				}
 				else
 				{
-					current_entry = {t1, nodes[child_index + 1].data};
-					if(t0 < hit.t)  node_stack[node_stack_size++] = {t0, nodes[child_index + 0].data};
+					current_entry = {t1, nodes[child_index + 1].ptr};
+					if(t0 < hit.t)  node_stack[node_stack_size++] = {t0, nodes[child_index + 0].ptr};
 				}
 				goto POP_SKIP;
 			}
 		}
 		else
 		{
-			for(uint32_t i = 0; i <= current_entry.data.num_prims; ++i)
+			for(uint32_t i = 0; i <= current_entry.data.prim_cnt; ++i)
 			{
-				uint32_t id = current_entry.data.prim_index + i;
+				uint32_t id = current_entry.data.prim_idx + i;
 				if(_intersect(tris[id], ray, hit))
 				{
 					hit.id = id;
@@ -412,7 +412,7 @@ inline bool intersect(const rtm::BVH2::Node* nodes, const rtm::Triangle* tris, c
 }
 
 #ifndef __riscv 
-inline void pregen_rays(uint framebuffer_width, uint framebuffer_height, const rtm::Camera camera, const rtm::BVH2& bvh, const rtm::Mesh& mesh, uint bounce, std::vector<rtm::Ray>& rays)
+inline void pregen_rays(uint framebuffer_width, uint framebuffer_height, const rtm::Camera camera, const rtm::BVH& bvh, const rtm::Mesh& mesh, uint bounce, std::vector<rtm::Ray>& rays)
 {
 	const uint framebuffer_size = framebuffer_width * framebuffer_height;
 	printf("Generating bounce %d rays from %d path\n", bounce, framebuffer_size);

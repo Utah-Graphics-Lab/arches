@@ -7,7 +7,6 @@
 #include "units/dual-streaming/unit-tp.hpp"
 #include "units/dual-streaming/unit-hit-record-updater.hpp"
 #include "units/dual-streaming/unit-scene-buffer.hpp"
-#include "units/dual-streaming/unit-treelet-rt-core.hpp"
 
 namespace Arches {
 
@@ -217,10 +216,10 @@ static DualStreamingKernelArgs initilize_buffers(Units::UnitMainMemoryBase* main
 	args.hit_delay = sim_config.get_int("hit_delay");
 
 	rtm::Mesh mesh(scene_file);
-	std::vector<rtm::BVH2::BuildObject> build_objects;
+	std::vector<rtm::BVH::BuildObject> build_objects;
 	mesh.get_build_objects(build_objects);
 
-	rtm::BVH2 bvh2(bvh_cache_filename, build_objects);
+	rtm::BVH bvh2(bvh_cache_filename, build_objects);
 	mesh.reorder(build_objects);
 
 	std::vector<rtm::Ray> rays(args.framebuffer_size);
@@ -229,15 +228,15 @@ static DualStreamingKernelArgs initilize_buffers(Units::UnitMainMemoryBase* main
 	args.rays = write_vector(main_memory, CACHE_BLOCK_SIZE, rays, heap_address);
 
 #if DS_USE_COMPRESSED_WIDE_BVH
-	rtm::WBVH wbvh(bvh2, build_objects, &mesh, false);
-	mesh.reorder(build_objects);
+	//rtm::WBVH wbvh(bvh2, build_objects, &mesh, false);
+	//mesh.reorder(build_objects);
 
-	rtm::NVCWBVH cwbvh(wbvh);
+	//rtm::NVCWBVH cwbvh(wbvh);
 
-	rtm::CompressedWideTreeletBVH cwtbvh(cwbvh, wbvh.ft_blocks.data());
-	args.treelets = write_vector(main_memory, page_size, cwtbvh.treelets, heap_address);
-	args.treelet_headers = write_vector(main_memory, page_size, cwtbvh.treelet_headers, heap_address);
-	args.num_treelets = cwtbvh.treelets.size();
+	//rtm::CompressedWideTreeletBVH cwtbvh(cwbvh, wbvh.ft_blocks.data());
+	//args.treelets = write_vector(main_memory, page_size, cwtbvh.treelets, heap_address);
+	//args.treelet_headers = write_vector(main_memory, page_size, cwtbvh.treelet_headers, heap_address);
+	//args.num_treelets = cwtbvh.treelets.size();
 #else
 	rtm::WBVH wbvh(bvh2, build_objects);
 	mesh.reorder(build_objects);

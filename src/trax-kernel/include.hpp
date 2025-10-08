@@ -3,10 +3,7 @@
 
 #define TRAX_USE_RT_CORE 1
 #define TRAX_USE_HARDWARE_INTERSECTORS 0
-
 #define TRAX_KERNEL_ARGS_ADDRESS 256ull
-
-#define USE_HEBVH 0
 
 struct TRaXKernelArgs
 {
@@ -20,7 +17,10 @@ struct TRaXKernelArgs
 	rtm::Camera camera;
 	rtm::vec3 light_dir;
 	rtm::Ray* rays;
-	rtm::NVCWBVH::Node* nodes;
-	rtm::FTB* ft_blocks;
+
+	rtm::HECWBVH::Node* nodes;
+	//rtm::NVCWBVH::Node* nodes;
+
+	rtm::FTB* ftbs;
 	rtm::Triangle* tris;
 };

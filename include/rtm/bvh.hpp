@@ -2,6 +2,8 @@
 
 #include "int.hpp"
 #include "aabb.hpp"
+#include "mesh.hpp"
+#include "ftb.hpp"
 
 #ifndef __riscv
 #include <vector>
@@ -13,243 +15,917 @@
 
 namespace rtm {
 
-#ifdef _DEBUG
-#define BUILD_QUALITY 0
-#else
-#define BUILD_QUALITY 2
-#endif
+union BVHPtr
+{
+	struct
+	{
+		uint32_t is_int   : 1;
+		uint32_t prim_cnt : 5;
+		uint32_t prim_idx : 26;
+	};
+	struct
+	{
+		uint32_t           : 1;
+		uint32_t child_cnt : 5;
+		uint32_t child_idx : 26;
+	};
+	uint32_t raw;
+};
 
-class BVH2
+class BVH
 {
 public:
-	const static uint32_t VERSION = 42; //used to validate the cache
-	const static uint MAX_PRIMS = 1;
+	const static uint32_t VERSION = 51;
 
-	struct BuildObject
+	enum BuildMethod
 	{
-		AABB  aabb{};
-		float cost{0.0f};
-		uint index{~0u};
-		uint64_t morton_code{~0u};
+		LBVH,
+		//HPLOC, //TODO
+		//PRBVH, //TODO
+		//SBVH,  //TODO
+		SAH_32BIN,
+		SAH,
+	};
+
+	enum CollapseMethod
+	{
+		GREEDY,
+		DYNAMIC,
+	};
+
+	enum LeafCost
+	{
+		CONSTANT,
+		LINEAR,
+		FTB,
+	};
+
+	struct BuildArgs
+	{
+		const char* cache_path{""};
+		uint8_t width{2};
+		uint8_t max_prims{1};
+		uint8_t build_method{SAH};
+		uint8_t collapse_method{DYNAMIC};
+		uint8_t leaf_cost{CONSTANT};
+		bool merge_nodes{false};
+		bool merge_leafs{false};
 	};
 
 	struct alignas(32) Node
 	{
-		union Data
-		{
-			struct
-			{
-				uint32_t is_leaf    : 1;
-				uint32_t num_prims  : 3; //num prim
-				uint32_t prim_index : 28; //first prim
-			};
-			struct
-			{
-				uint32_t             : 1;
-				uint32_t child_index : 31; //left child
-			};
-		};
-
-		AABB       aabb;
-		Data       data;
+		AABB aabb;
+		BVHPtr ptr;
 	};
 
 #ifndef __riscv
+	BuildArgs args{};
 	float sah_cost{0.0f};
 	std::vector<Node> nodes;
 
-	struct BuildEvent
+private:
+	struct BuildObject
 	{
-		uint start;
-		uint end;
-		uint node_index;
-
-		uint split_build_objects(BuildObject* build_objects, uint quality)
-		{
-			uint size = end - start;
-			if(size <= 1) return ~0u;
-
-			if(quality == 0 && size > MAX_PRIMS)
-				return split_build_objects_radix(build_objects);
-
-			if(quality == 1 && size > 64)
-				return split_build_objects_radix(build_objects);
-
-			return split_build_objects_sah(build_objects);
-		}
-
-		uint split_build_objects_sah(BuildObject* build_objects)
-		{
-			uint size = end - start;
-			if(size <= 1) return ~0u;
-
-			uint best_axis = 0;
-			uint best_spliting_index = 0;
-			float best_spliting_cost = FLT_MAX;
-
-			AABB aabb;
-			for(uint i = start; i < end; ++i)
-				aabb.add(build_objects[i].aabb);
-
-			float aabb_sa = aabb.surface_area();
-			float inv_aabb_sa = 1.0f / aabb_sa;
-
-			uint axis = aabb.longest_axis();
-			for(axis = 0; axis < 3; ++axis)
-			{
-				std::sort(build_objects + start, build_objects + end, [&](const BuildObject& a, const BuildObject& b)
-				{
-					return a.aabb.centroid()[axis] < b.aabb.centroid()[axis];
-				});
-
-				std::vector<float> cost_left(size);
-				std::vector<float> cost_right(size);
-
-				AABB left_aabb, right_aabb;
-				float left_cost_sum = 0.0f, right_cost_sum = 0.0f;
-
-				for(uint i = 0; i < size; ++i)
-				{
-					cost_left[i] = AABB::cost() + left_cost_sum * left_aabb.surface_area() * inv_aabb_sa;
-					left_aabb.add(build_objects[start + i].aabb);
-					left_cost_sum += build_objects[start + i].cost;
-				}
-				cost_left[0] = 0.0f;
-
-				for(uint i = size - 1; i < size; --i)
-				{
-					right_cost_sum += build_objects[start + i].cost;
-					right_aabb.add(build_objects[start + i].aabb);
-					cost_right[i] = AABB::cost() + right_cost_sum * right_aabb.surface_area() * inv_aabb_sa;
-				}
-
-				std::vector<float> costs;
-				for(uint i = 0; i < size; ++i)
-				{
-					float cost;
-					if(i == 0) cost = left_cost_sum;
-					else       cost = cost_left[i] + cost_right[i];
-					costs.push_back(cost);
-
-					if(cost < best_spliting_cost)
-					{
-						best_spliting_index = start + i;
-						best_spliting_cost = cost;
-						best_axis = axis;
-					}
-				}
-			}
-			if(axis == 3) axis = 2;
-
-			if(axis != best_axis)
-			{
-				std::sort(build_objects + start, build_objects + end, [&](const BuildObject& a, const BuildObject& b)
-				{
-					return a.aabb.centroid()[best_axis] < b.aabb.centroid()[best_axis];
-				});
-			}
-
-			if(best_spliting_index == start)
-			{
-				if(size <= MAX_PRIMS) return ~0;
-				else                  return (start + end) / 2;
-			}
-
-			return best_spliting_index;
-		}
-
-		uint split_build_objects_radix(BuildObject* build_objects)
-		{
-			uint size = end - start;
-			if(size <= 1) return ~0u;
-
-			uint64_t common_prefix = build_objects[start].morton_code;
-			uint64_t common_prefix_size = 64;
-			for(uint i = start; i < end; ++i)
-			{
-				uint64_t mask = common_prefix ^ build_objects[i].morton_code;
-				common_prefix_size = std::min(common_prefix_size, _lzcnt_u64(mask));
-			}
-
-			//All keys are identical. An arbitrary split
-			if(common_prefix_size == 64)
-			{
-				if(size <= MAX_PRIMS) return ~0u;
-				else                  return (start + end) / 2;
-			}
-
-			uint64_t sort_bit_mask = 1ull << (63 - common_prefix_size);
-			uint head = start;
-			uint tail = end - 1;
-
-			while(head != tail)
-			{
-				if(!(build_objects[head].morton_code & sort_bit_mask))
-				{
-					head++;
-					continue;
-				}
-
-				if((build_objects[tail].morton_code & sort_bit_mask))
-				{
-					tail--;
-					continue;
-				}
-
-				std::swap(build_objects[head], build_objects[tail]);
-			}
-
-			return head;
-		}
+		AABB  aabb{};
+		float_t cost{0.0f};
+		uint32_t index{~0u};
+		uint64_t morton_code{~0u};
 	};
 
-private:
+	struct BuildEvent
+	{
+		uint32_t start;
+		uint32_t end;
+		uint32_t node_index;
+	};
+
 	struct FileHeader
 	{
 		uint32_t version;
-		uint8_t  quality;
-		float    sah_cost;
+		uint32_t build_method;
 		uint32_t num_nodes;
 		uint32_t num_build_objects;
 	};
 
-public:
-	BVH2() = default;
+	const Mesh* _mesh{nullptr}; //used only for FTB leaf cost 
 
-	BVH2(std::vector<BuildObject>& build_objects, uint quality = 2)
+public:
+	BVH() = default;
+
+	BVH(Mesh& mesh, BuildArgs args) : args(args)
 	{
-		build(build_objects, quality);
+		std::vector<BuildObject> bld_objs;
+		bld_objs.resize(mesh.size());
+
+		bool build = true;
+		if(args.cache_path != "")
+		{
+			printf("BVH2: Loading: %s\n", args.cache_path);
+			build = !_deserialize(args.cache_path, bld_objs);
+		}
+
+		if(build)
+		{
+			printf("BVH2: Failed to load: %s\n", args.cache_path);
+			printf("BVH2: Building\n");
+
+			_get_build_objs(mesh, bld_objs);
+			_build(bld_objs);
+			if(args.cache_path != "")
+				_serialize(args.cache_path, bld_objs);
+		}
+
+		_reorder(mesh, bld_objs);
+
+		if(args.width > 2)
+		{
+			_mesh = &mesh; //gross
+			printf("BVH2: Collapsing\n");
+			_collapse(bld_objs);
+		}
+
+		sah_cost = _compute_cost(bld_objs);
+
+		if(args.merge_nodes)
+		{
+			printf("BVH%d: Merging Nodes\n", args.width);
+			_merge_nodes();
+		}
+
+		if(args.merge_leafs)
+		{
+			printf("BVH%d: Merging Leafs\n", args.width);
+			_merge_leafs(bld_objs);
+		}
+
+		_print_stats();
 	}
 
-	BVH2(std::string cache, std::vector<BuildObject>& build_objects, uint quality = 2)
+private:
+	static void _get_build_objs(const Mesh& mesh, std::vector<BuildObject>& bld_objs)
 	{
-		if(!deserialize(cache, build_objects, quality))
+		bld_objs.resize(mesh.size());
+		for(uint32_t i = 0; i < mesh.size(); ++i)
 		{
-			build(build_objects, quality);
-			serialize(cache, build_objects, quality);
+			Triangle tri = mesh.get_triangle(i);
+			bld_objs[i].aabb = tri.aabb();
+			bld_objs[i].cost = 1.0f;
+			bld_objs[i].index = i;
 		}
 	}
 
-	void serialize(std::string file_path, const std::vector<BuildObject>& build_objects, uint quality)
+	static void _compute_morton_codes(std::vector<BuildObject>& bld_objs)
+	{
+		AABB aabb;
+		for(auto& build_object : bld_objs)
+			aabb.add(build_object.aabb);
+
+		uint max = (1ull << 21) - 1;
+		rtm::vec3 scale = 1.0f / (aabb.max - aabb.min);
+		for(auto& build_object : bld_objs)
+		{
+			rtm::vec3 centroid(build_object.aabb.centroid() - aabb.min);
+			centroid = centroid * scale * max;
+
+			build_object.morton_code = 
+				_pdep_u64((uint32_t)centroid.x, 0b0001001001001001001001001001001001001001001001001001001001001001ull) |
+				_pdep_u64((uint32_t)centroid.y, 0b0010010010010010010010010010010010010010010010010010010010010010ull) |
+				_pdep_u64((uint32_t)centroid.z, 0b0100100100100100100100100100100100100100100100100100100100100100ull);
+		}
+	}
+
+	static void _reorder(Mesh& mesh, std::vector<BuildObject>& bld_objs)
+	{
+		std::vector<rtm::uvec3> tmp_vrt_inds(mesh.vertex_indices);
+		std::vector<rtm::uvec3> tmp_nrml_inds(mesh.normal_indices);
+		std::vector<rtm::uvec3> tmp_txcd_inds(mesh.tex_coord_indices);
+		std::vector<uint>       tmp_mat_inds(mesh.material_indices);
+		for(uint32_t i = 0; i < bld_objs.size(); ++i)
+		{
+			mesh.vertex_indices[i] = tmp_vrt_inds[bld_objs[i].index];
+			mesh.normal_indices[i] = tmp_nrml_inds[bld_objs[i].index];
+			mesh.tex_coord_indices[i] = tmp_txcd_inds[bld_objs[i].index];
+			mesh.material_indices[i] = tmp_mat_inds[bld_objs[i].index];
+			bld_objs[i].index = i;
+		}
+	}
+
+	void _refit(const std::vector<BuildObject>& bld_objs)
+	{
+		for(int i = nodes.size() - 1; i >= 0; --i)
+		{
+			BVH::Node& node = nodes[i];
+			node.aabb = AABB();
+			if(node.ptr.is_int)
+			{
+				for(uint j = 0; j < nodes[i].ptr.child_cnt; ++j)
+					node.aabb.add(nodes[node.ptr.child_idx + j].aabb);
+			}
+			else
+			{
+				for(uint j = 0; j < node.ptr.prim_cnt; ++j)
+					node.aabb.add(bld_objs[node.ptr.prim_idx + j].aabb);
+			}
+		}
+	}
+
+	uint _split(std::vector<BuildObject>& bld_objs, uint start, uint end) const
+	{
+		uint size = end - start;
+		if(size <= 1) return ~0u;
+
+		if(args.build_method == LBVH) return _split_radix(bld_objs, start, end);
+		else if(args.build_method == SAH_32BIN) return _split_sah_binned(bld_objs, start, end, 32);
+		else if(args.build_method == SAH) return _split_sah(bld_objs, start, end);
+		else return _split_sah(bld_objs, start, end);
+	}
+
+	uint _split_radix(std::vector<BuildObject>& bld_objs, uint start, uint end) const
+	{
+		uint64_t mask = 0x0ull;
+		for(uint i = start; i < end; ++i)
+			mask |= bld_objs[i].morton_code ^ bld_objs[start].morton_code;
+
+		uint64_t prefix = _lzcnt_u64(mask);
+		if(prefix == 64)
+			return (start + end) / 2;
+
+		uint i = start, j = end;
+		uint64_t sort_key = 1ull << (63 - prefix);
+		while(i < j)
+		{
+			const BuildObject& obj = bld_objs[i];
+			if(obj.morton_code & sort_key) 
+			{
+				j--;
+				std::swap(bld_objs[i], bld_objs[j]);
+			}
+			else i++;
+		}
+
+		return i;
+	}
+
+	uint _split_on_plane(std::vector<BuildObject>& bld_objs, uint start, uint end, uint split_axis, float split_pos, float& cost) const
+	{
+		AABB aabb_left, aabb_right;
+		float cost_left = 0.0f, cost_right = 0.0f;
+		uint i = start, j = end;
+		while(i < j)
+		{
+			const BuildObject& obj = bld_objs[i];
+			float center = obj.aabb.centroid()[split_axis];
+			if(center <= split_pos)
+			{
+				i++;
+				cost_left += obj.cost;
+				aabb_left.add(obj.aabb);
+			}
+			else
+			{
+				j--;
+				std::swap(bld_objs[i], bld_objs[j]);
+				cost_right += obj.cost;
+				aabb_right.add(obj.aabb);
+			}
+		}
+
+		uint count_left = i - start;
+		uint count_right = end - i;
+		if(count_left == 0 || count_right == 0)
+		{
+			cost = INFINITY;
+			return (start + end) / 2;
+		}
+
+		cost = cost_left  * aabb_left.surface_area() +  cost_right * aabb_right.surface_area();
+		return i;
+	}
+
+	uint _split_sah_binned(std::vector<BuildObject>& bld_objs, uint start, uint end, uint bins = 32) const
+	{
+		AABB aabb;
+		for(uint i = start; i < end; ++i)
+			aabb.add(bld_objs[i].aabb);
+
+		float best_sah = INFINITY;
+		uint best_split_axis = 0;
+		float best_split_pos = 0.0f;
+
+		for(uint split_axis = 0; split_axis < 3; ++split_axis)
+			for(uint b = 1; b < bins; ++b)
+			{
+				float split_ratio = (float)b / bins;
+				float split_pos = (1.0f - split_ratio) * aabb.min[split_axis] + split_ratio * aabb.max[split_axis];
+				float sah; _split_on_plane(bld_objs, start, end, split_axis, split_pos, sah);
+				if(sah < best_sah)
+				{
+					best_split_axis = split_axis;
+					best_sah = sah;
+					best_split_pos = split_pos;
+				}
+			}
+
+		if(best_sah == INFINITY)
+			return (start + end) / 2;
+
+		return _split_on_plane(bld_objs, start, end, best_split_axis, best_split_pos, best_sah);
+	}
+
+	uint _split_sah(std::vector<BuildObject>& bld_objs, uint start, uint end) const
+	{
+		uint size = end - start;
+		if(size <= 1) return ~0u;
+
+		AABB aabb;
+		for(uint i = start; i < end; ++i)
+			aabb.add(bld_objs[i].aabb);
+
+		float best_sah = INFINITY;
+		uint best_split_axis = 0;
+		uint best_split_index = 0;
+
+		std::vector<float> cost_left(size);
+		std::vector<float> cost_right(size);
+		for(uint split_axis = 0; split_axis < 3; ++split_axis)
+		{
+			std::sort(bld_objs.begin() + start, bld_objs.begin() + end, [&](const BuildObject& a, const BuildObject& b)
+			{
+				return a.aabb.centroid()[split_axis] < b.aabb.centroid()[split_axis];
+			});
+
+			const BuildObject* objs = bld_objs.data() + start;
+
+			AABB left_aabb; uint left_cost_sum = 0.0f;
+			for(uint i = 0; i < size; ++i)
+			{
+				cost_left[i] = left_cost_sum * left_aabb.surface_area();
+				left_aabb.add(objs[i].aabb);
+				left_cost_sum += objs[i].cost;
+			}
+			cost_left[0] = 0.0f;
+
+			AABB right_aabb; uint right_cost_sum = 0.0f;
+			for(int i = size - 1; i >= 0; --i)
+			{
+				right_cost_sum += objs[i].cost;
+				right_aabb.add(objs[i].aabb);
+				cost_right[i] = right_cost_sum * right_aabb.surface_area();
+			}
+
+			for(uint i = 1; i < size; ++i)
+			{
+				float cost = cost_left[i] + cost_right[i];
+				if(cost < best_sah)
+				{
+					best_sah = cost;
+					best_split_axis = split_axis;
+					best_split_index = i;
+				}
+			}
+		}
+
+		std::sort(bld_objs.begin() + start, bld_objs.begin() + end, [&](const BuildObject& a, const BuildObject& b)
+		{
+			return a.aabb.centroid()[best_split_axis] < b.aabb.centroid()[best_split_axis];
+		});
+
+		if(best_sah == INFINITY)
+			return (start + end) / 2;
+
+		return start + best_split_index;
+	}
+
+	void _build(std::vector<BuildObject>& bld_objs)
+	{
+		if(args.build_method == LBVH) _compute_morton_codes(bld_objs);
+
+		std::deque<BuildEvent> event_queue;
+		event_queue.emplace_back(0, bld_objs.size(), 0);
+		
+		nodes.reserve(bld_objs.size() * 2 - 1);
+		nodes.emplace_back();
+
+		while(!event_queue.empty())
+		{
+			BuildEvent event = event_queue.front(); event_queue.pop_front();
+
+			uint splitting_index = _split(bld_objs, event.start, event.end);
+			if(splitting_index != ~0)
+			{
+				nodes[event.node_index].ptr.is_int = 1;
+				nodes[event.node_index].ptr.child_cnt = 2;
+				nodes[event.node_index].ptr.child_idx = nodes.size();
+
+				event_queue.emplace_back(event.start, splitting_index, (uint)nodes.size() + 0);
+				event_queue.emplace_back(splitting_index,   event.end, (uint)nodes.size() + 1);
+
+				for(uint i = 0; i < 2; ++i)
+					nodes.emplace_back();
+			}
+			else
+			{
+				//didn't do any splitting meaning this build event can become a leaf node
+				uint size = event.end - event.start;
+				nodes[event.node_index].ptr.is_int = 0;
+				nodes[event.node_index].ptr.prim_cnt = size;
+				nodes[event.node_index].ptr.prim_idx = event.start;
+			}
+		}
+
+		_refit(bld_objs);
+	}
+
+	float _cost_leaf(const std::vector<BuildObject>& bld_objs, uint prim_id0, uint prim_cnt)
+	{
+		float cost_leaf = INFINITY;
+		if(prim_cnt <= args.max_prims)
+		{
+			if(args.leaf_cost == CONSTANT)  cost_leaf = 1.0f;
+			else if(args.leaf_cost == LINEAR)
+			{
+				cost_leaf = 0.0f;
+				for(uint i = 0; i < prim_cnt; ++i)
+					cost_leaf += bld_objs[prim_id0 + i].cost;
+			}
+			else if(args.leaf_cost == FTB)
+			{
+				rtm::FTB temp;
+				if(compress(prim_id0, prim_cnt, *_mesh, temp))
+					cost_leaf = 1.0f;
+			}
+		}
+		return cost_leaf;
+	}
+
+	void _collapse_leafs(const std::vector<BuildObject>& bld_objs)
+	{
+		for(int n = nodes.size() - 1; n >= 0; --n)
+		{
+			Node& node = nodes[n];
+			if(!node.ptr.is_int) continue;
+			
+			Node* child = &nodes[node.ptr.child_idx];
+			if(child[0].ptr.is_int || child[1].ptr.is_int) continue;
+
+			float cost_internal = node.aabb.surface_area() +
+				child[0].aabb.surface_area() * _cost_leaf(bld_objs, child[0].ptr.child_idx, child[0].ptr.prim_cnt) +
+				child[1].aabb.surface_area() * _cost_leaf(bld_objs, child[1].ptr.child_idx, child[1].ptr.prim_cnt);
+
+			uint prim_cnt = child[0].ptr.prim_cnt + child[1].ptr.prim_cnt;
+			uint prim_idx = child[0].ptr.prim_idx;
+			if(prim_cnt > FTB::MAX_TRIS) continue;
+
+			float cost_leaf = node.aabb.surface_area() * _cost_leaf(bld_objs, prim_idx, prim_cnt);
+			if(cost_leaf < cost_internal)
+			{
+				node.ptr.is_int = 0;
+				node.ptr.prim_idx = child[0].ptr.prim_idx;
+				node.ptr.prim_cnt = prim_cnt;
+				child[0].ptr.prim_cnt = 0;
+				child[1].ptr.prim_cnt = 0;
+			}
+		}
+	}
+
+	void _collapse(const std::vector<BuildObject>& bld_objs)
+	{
+		if(args.collapse_method == GREEDY)
+		{
+			_collapse_leafs(bld_objs);
+			_collapse_greedy();
+		}
+		else if(args.collapse_method == DYNAMIC)
+		{
+			_collapse_dynamic(bld_objs);
+		}
+		else assert(false);
+	}
+
+	void _collapse_greedy()
+	{
+		struct Event
+		{
+			uint bvh2_index;
+			uint wbvh_index;
+		};
+
+		std::deque<Event> event_queue;
+		event_queue.emplace_back(0, 0);
+
+		std::vector<Node> wnodes;
+		wnodes.emplace_back();
+
+		std::vector<uint> node_set;
+		node_set.reserve(args.width);
+
+		while(!event_queue.empty())
+		{
+			Event event = event_queue.front(); event_queue.pop_front();
+			const Node& node = nodes[event.bvh2_index];
+			Node& wnode = wnodes[event.wbvh_index];
+			wnode = node;
+
+			if(!node.ptr.is_int) continue;
+
+			node_set.clear();
+			node_set.push_back(event.bvh2_index);
+			while(node_set.size() < args.width)
+			{
+				float best_sa = -INFINITY;
+				uint best_index = ~0u;
+				for(uint i = 0; i < node_set.size(); ++i)
+				{
+					if(!nodes[node_set[i]].ptr.is_int) continue;
+					float sa = nodes[node_set[i]].aabb.surface_area();
+					if(sa <= best_sa) continue;
+					best_index = i;
+					best_sa = sa;
+				}
+				if(best_index == ~0u) break;
+
+				uint base_index = nodes[node_set[best_index]].ptr.child_idx;
+				node_set[best_index] = base_index;
+				node_set.insert(node_set.begin() + best_index + 1, base_index + 1);
+			}
+
+			wnode.ptr.child_idx = wnodes.size();
+			wnode.ptr.child_cnt = node_set.size();
+			for(uint i = 0; i < node_set.size(); ++i)
+			{
+				if(nodes[node_set[i]].ptr.is_int)
+				{
+					event_queue.emplace_back(node_set[i], wnodes.size());
+					wnodes.emplace_back();
+				}
+			}
+			for(uint i = 0; i < node_set.size(); ++i)
+			{
+				if(!nodes[node_set[i]].ptr.is_int)
+				{
+					event_queue.emplace_back(node_set[i], wnodes.size());
+					wnodes.emplace_back();
+				}
+			}
+		}
+
+		nodes = wnodes;
+	}
+
+	void _collapse_dynamic(const std::vector<BuildObject>& bld_objs)
+	{
+		enum Type
+		{
+			LEAF,
+			INTERNAL,
+			DISTRIBUTE
+		};
+		struct Decision
+		{
+			uint8_t type;
+			uint8_t distribute_left;
+			uint8_t distribute_right;
+			uint8_t _pad;
+			float cost;
+		};
+		union alignas(64) Cache
+		{
+			struct
+			{
+				uint32_t prim_cnt;
+				uint32_t prim_idx;
+			};
+			Decision decisions[16];
+		};
+		std::vector<Cache> caches(nodes.size());
+
+		for(int n = nodes.size() - 1; n >= 0; --n)
+		{
+			Node& node = nodes[n];
+			Cache& cache = caches[n];
+			if(node.ptr.is_int)
+			{
+				//Collect prims for internal
+				uint left_idx = node.ptr.child_idx + 0, right_idx = node.ptr.child_idx + 1;
+				cache.prim_cnt = (uint)caches[left_idx].prim_cnt + (uint)caches[right_idx].prim_cnt;
+				cache.prim_idx = caches[left_idx].prim_idx;
+			}
+			else
+			{
+				//Collect prims for leaf
+				cache.prim_cnt = node.ptr.prim_cnt;
+				cache.prim_idx = node.ptr.prim_idx;
+			}
+
+			//Leaf cost
+			cache.decisions[1].cost = _cost_leaf(bld_objs, cache.prim_idx, cache.prim_cnt) * node.aabb.surface_area();
+			cache.decisions[1].type = LEAF;
+
+			if(node.ptr.is_int)
+			{
+				uint left_idx = node.ptr.child_idx + 0, right_idx = node.ptr.child_idx + 1;
+
+				//Internal cost
+				uint j = args.width;
+				for(uint k = 1; k < j; ++k)
+				{
+					float cost_internal = node.aabb.surface_area() +
+						caches[left_idx].decisions[k].cost +
+						caches[right_idx].decisions[j - k].cost;
+
+					if(cost_internal < cache.decisions[1].cost)
+					{
+						cache.decisions[1].distribute_left = k;
+						cache.decisions[1].distribute_right = j - k;
+						cache.decisions[1].cost = cost_internal;
+						cache.decisions[1].type = INTERNAL;
+					}
+				}
+
+				//Distribute cost
+				for(uint j = 2; j < args.width; ++j)
+				{
+					cache.decisions[j] = cache.decisions[j - 1];
+					for(uint k = 1; k < j; ++k)
+					{
+						float cost_distribute = caches[left_idx].decisions[k].cost + caches[right_idx].decisions[j - k].cost;
+						if(cost_distribute < cache.decisions[j].cost)
+						{
+							uint d = j == args.width ? 1 : j;
+							cache.decisions[d].distribute_left = k;
+							cache.decisions[d].distribute_right = j - k;
+							cache.decisions[d].cost = cost_distribute;
+							cache.decisions[d].type = DISTRIBUTE;
+						}
+					}
+				}
+			}
+			else
+			{
+				for(uint j = 2; j < args.width; ++j)
+					cache.decisions[j] = cache.decisions[j - 1];
+			}
+
+			if(cache.decisions[1].cost == INFINITY) __debugbreak();
+		}
+
+		struct CostItem
+		{
+			uint n;
+			uint i;
+		};
+
+		struct Event
+		{
+			CostItem item;
+			uint wbvh_index;
+		};
+
+		std::deque<Event> event_queue;
+		event_queue.emplace_back(CostItem(0, 1), 0);
+
+		std::vector<Node> wnodes;
+		wnodes.emplace_back();
+
+		std::vector<CostItem> node_set;
+		node_set.reserve(args.width);
+
+		while(!event_queue.empty())
+		{
+			Event event = event_queue.front();  event_queue.pop_front();
+			const Node& node = nodes[event.item.n];
+			Node& wnode = wnodes[event.wbvh_index];
+			wnode = node;
+
+			Decision d = caches[event.item.n].decisions[event.item.i];
+			if(d.type == INTERNAL)
+			{
+				node_set.clear();
+				node_set.emplace_back(node.ptr.child_idx + 0, d.distribute_left);
+				node_set.emplace_back(node.ptr.child_idx + 1, d.distribute_right);
+
+				//collect nodes
+				uint i = 0;
+				while(i < node_set.size())
+				{
+					CostItem item = node_set[i];
+					const Node& n = nodes[item.n];
+					d = caches[item.n].decisions[item.i];
+					if(d.type == DISTRIBUTE)
+					{
+						node_set[i] = CostItem(n.ptr.child_idx, d.distribute_left);
+						node_set.insert(node_set.begin() + i + 1, CostItem(n.ptr.child_idx + 1, d.distribute_right));
+					}
+					else i++;
+				}
+
+				wnode.ptr.child_idx = wnodes.size();
+				wnode.ptr.child_cnt = node_set.size();
+				//map interior children
+				for(uint i = 0; i < node_set.size(); ++i)
+				{
+					if(caches[node_set[i].n].decisions[node_set[i].i].type == INTERNAL)
+					{
+						event_queue.emplace_back(node_set[i], wnodes.size());
+						wnodes.emplace_back();
+					}
+				}
+				//then leaf children
+				for(uint i = 0; i < node_set.size(); ++i)
+				{
+					if(caches[node_set[i].n].decisions[node_set[i].i].type == LEAF)
+					{
+						event_queue.emplace_back(node_set[i], wnodes.size());
+						wnodes.emplace_back();
+					}
+				}
+			}
+			else if(d.type == LEAF)
+			{
+				wnode.ptr.is_int = 0;
+				wnode.ptr.prim_cnt = caches[event.item.n].prim_cnt;
+				wnode.ptr.prim_idx = caches[event.item.n].prim_idx;
+			}
+			else assert(false);
+		}
+
+		nodes = wnodes;
+	}
+
+	void _merge_nodes()
+	{
+		for(uint i = 0; i < nodes.size(); ++i)
+		{
+			BVH::Node& node = nodes[i];
+			if(!node.ptr.is_int) continue;
+
+			uint target = 0;
+			for(uint source = 1; source < node.ptr.child_cnt; ++source)
+				if(!_try_merge_nodes(node, target, source))
+					target = source;
+		}
+	}
+
+	bool _try_merge_nodes(BVH::Node& node, uint target_child, uint source_child)
+	{
+		if(!node.ptr.is_int) return false;
+
+		BVH::Node& target = nodes[node.ptr.child_idx + target_child];
+		BVH::Node& source = nodes[node.ptr.child_idx + source_child];
+		if(source.ptr.is_int != target.ptr.is_int) return false;
+		if(!target.ptr.is_int) return false;
+
+		uint child_cnt = target.ptr.child_cnt + source.ptr.child_cnt;
+		if(child_cnt > args.width) return false;
+
+		//apply the merge
+		target.ptr.child_cnt = child_cnt;
+		for(uint i = target_child; i <= source_child; ++i)
+			nodes[node.ptr.child_idx + i].ptr = target.ptr;
+
+		return true;
+	}
+
+	bool _try_merge_leafs(const std::vector<BuildObject>& bld_objs, BVH::Node& node, uint target_child, uint source_child)
+	{
+		if(!node.ptr.is_int) return false;
+
+		BVH::Node& target = nodes[node.ptr.child_idx + target_child];
+		BVH::Node& source = nodes[node.ptr.child_idx + source_child];
+		if(source.ptr.is_int != target.ptr.is_int) return false;
+		if(target.ptr.is_int) return false;
+
+		uint prim_cnt = target.ptr.prim_cnt + source.ptr.prim_cnt;
+		if(_cost_leaf(bld_objs, target.ptr.prim_idx, prim_cnt) == INFINITY) return false;
+
+		//apply the merge
+		target.ptr.prim_cnt = prim_cnt;
+		for(uint i = target_child; i <= source_child; ++i)
+			nodes[node.ptr.child_idx + i].ptr = target.ptr;
+
+		return true;
+	}
+
+	void _merge_leafs(const std::vector<BuildObject>& bld_objs)
+	{
+		for(uint i = 0; i < nodes.size(); ++i)
+		{
+			BVH::Node& node = nodes[i];
+			if(!node.ptr.is_int) continue;
+
+			uint target = 0;
+			for(uint source = 1; source < node.ptr.child_cnt; ++source)
+				if(!_try_merge_leafs(bld_objs, node, target, source))
+					target = source;
+		}
+	}
+
+	float _compute_cost(const std::vector<BuildObject>& bld_objs) const
+	{
+		float cost = 0.0f, root_surface_area = nodes[0].aabb.surface_area();
+		for(int i = nodes.size() - 1; i >= 0; --i)
+		{
+			const BVH::Node& node = nodes[i];
+			float A = node.aabb.surface_area() / root_surface_area;
+			if(node.ptr.is_int)
+			{
+				float c_node = 1.0f;
+				cost += A * c_node;
+			}
+			else
+			{
+				float c_prim = 0.0f;
+				for(uint j = 0; j < node.ptr.prim_cnt; ++j)
+					c_prim += bld_objs[node.ptr.prim_idx + j].cost;
+				cost += A * c_prim;
+			}
+		}
+		return cost;
+	}
+
+	void _print_stats() const
+	{
+		const char* build_method = "NA";
+		if(args.build_method == LBVH) build_method = "LBVH";
+		if(args.build_method == SAH_32BIN) build_method = "SAH_32BIN";
+		if(args.build_method == SAH) build_method = "SAH";
+
+		const char* collapse_method = "NA";
+		if(args.collapse_method == DYNAMIC)  collapse_method = "DYNAMIC";
+		if(args.collapse_method == GREEDY) collapse_method = "GREEDY";
+
+		const char* leaf_cost = "NA";
+		if(args.leaf_cost == CONSTANT) leaf_cost = "CONSTANT";
+		if(args.leaf_cost == LINEAR)  leaf_cost = "LINEAR";
+		if(args.leaf_cost == FTB)  leaf_cost = "FTB";
+
+		printf("BVH%d: Size:      %0.1f MiB\n", args.width, (float)sizeof(Node) * nodes.size() / (1 << 20));
+		printf("BVH%d: SAH Cost:  %.2f\n", args.width, sah_cost);
+		printf("BVH%d: Max Prims: %d\n", args.width, args.max_prims);
+		printf("BVH%d: Build:     %s\n", args.width, build_method);
+		printf("BVH%d: Collapse:  %s\n", args.width, collapse_method);
+		printf("BVH%d: Leaf Cost: %s\n", args.width, leaf_cost);
+		printf("BVH%d: Node Merg: %d\n", args.width, args.merge_nodes);
+		printf("BVH%d: Leaf Merg: %d\n", args.width, args.merge_leafs);
+
+		uint node_histo[32];
+		for(uint i = 0; i < 32; ++i) node_histo[i] = 0;
+
+		uint leaf_histo[32];
+		for(uint i = 0; i < 32; ++i) leaf_histo[i] = 0;
+
+		uint total_aabbs = 0, total_prims = 0, total_int = 0, total_leaf = 0;
+		for(uint i = 0; i < nodes.size(); ++i)
+		{
+			const Node& node = nodes[i];
+			if(node.ptr.is_int)
+			{
+				total_int++;
+				total_aabbs += node.ptr.child_cnt;
+				node_histo[node.ptr.child_cnt]++;
+			}
+			else
+			{
+				total_leaf++;
+				total_prims += node.ptr.prim_cnt;
+				leaf_histo[node.ptr.prim_cnt]++;
+			}
+		}
+
+		printf("BVH%d: Node Fullness: %.2f\n", args.width, (float)total_aabbs / total_int);
+		for(uint i = 2; i <= args.width; ++i)
+		{
+			float precent = 100.0f * node_histo[i] / total_int;
+			printf("%02d: %5.1f%% %.*s\n", i, precent, (uint)std::round(precent),
+				"....................................................................................................");
+		}
+
+		printf("BVH%d: Leaf Fullness: %.2f\n", args.width, (float)total_prims / total_leaf);
+		for(uint i = 1; i <= args.max_prims; ++i)
+		{
+			float precent = 100.0f * leaf_histo[i] / total_leaf;
+			printf("%02d: %5.1f%% %.*s\n", i, precent, (uint)std::round(precent),
+				 "....................................................................................................");
+		}
+	}
+
+	void _serialize(const char* file_path, const std::vector<BuildObject>& bld_objs) const
 	{
 		std::ofstream file_stream(file_path, std::ios::binary);
 
 		FileHeader header;
 		header.version = VERSION;
-		header.quality = quality;
-		header.sah_cost = sah_cost;
+		header.build_method = args.build_method;
 		header.num_nodes = nodes.size();
-		header.num_build_objects = build_objects.size();
+		header.num_build_objects = bld_objs.size();
 
 		file_stream.write((char*)&header, sizeof(FileHeader));
 		file_stream.write((char*)nodes.data(), sizeof(Node) * nodes.size());
-		file_stream.write((char*)build_objects.data(), sizeof(BuildObject) * build_objects.size());
+		file_stream.write((char*)bld_objs.data(), sizeof(BuildObject) * bld_objs.size());
 	}
 
-	bool deserialize(std::string file_path, std::vector<BuildObject>& build_objects, uint quality = ~0u)
+	bool _deserialize(const char* file_path, std::vector<BuildObject>& bld_objs)
 	{
-		printf("BVH2: Loading: %s\n", file_path.c_str());
-
 		bool succeeded = false;
 		std::ifstream file_stream(file_path, std::ios::binary);
 		if(file_stream.is_open())
@@ -257,126 +933,19 @@ public:
 			FileHeader header;
 			file_stream.read((char*)&header, sizeof(FileHeader));
 
-			if(header.version == VERSION
-				&& (header.num_build_objects == build_objects.size())
-				&& (quality == ~0u || header.quality == quality))
+			if(header.version == VERSION &&
+				header.num_build_objects == bld_objs.size() &&
+				header.build_method == args.build_method)
 			{
 				nodes.resize(header.num_nodes);
+				bld_objs.resize(header.num_build_objects);
 				file_stream.read((char*)nodes.data(), sizeof(Node) * nodes.size());
-				file_stream.read((char*)build_objects.data(), sizeof(BuildObject) * build_objects.size());
-				sah_cost = header.sah_cost;
-
+				file_stream.read((char*)bld_objs.data(), sizeof(BuildObject) * bld_objs.size());
 				succeeded = true;
-				printf("BVH2: Size: %0.1f MiB\n", (float)sizeof(Node) * nodes.size() / (1 << 20));
-				printf("BVH2: Quality: %d\n", header.quality);
-				printf("BVH2: SAH Cost: %f\n", header.sah_cost);
-				printf("BVH2: Nodes: %d\n", header.num_nodes);
-				printf("BVH2: Prims: %d\n", header.num_build_objects);
 			}
 		}
-
-		if(!succeeded)
-			printf("BVH2: Failed to load: %s\n", file_path.c_str());
 
 		return succeeded;
-	}
-
-	void build(std::vector<BuildObject>& build_objects, uint quality = 2)
-	{
-		//printf("Building BVH2\n");
-		nodes.clear();
-
-		//Build morton codes for build objects
-		AABB cent_aabb;
-		for(auto& build_object : build_objects)
-			cent_aabb.add(build_object.aabb.centroid());
-
-		rtm::vec3 scale = (cent_aabb.max + (1.0f / (1 << 20))) - cent_aabb.min;
-		for(auto& build_object : build_objects)
-		{
-			rtm::vec3 cent = build_object.aabb.centroid();
-			cent = (cent - cent_aabb.min) / scale;
-
-			uint64_t x = cent.x * (1ull << 20);
-			uint64_t y = cent.y * (1ull << 20);
-			uint64_t z = cent.z * (1ull << 20);
-
-			build_object.morton_code = 0;
-			build_object.morton_code |= _pdep_u64(x, 0b001001001001001001001001001001001001001001001001001001001001ull);
-			build_object.morton_code |= _pdep_u64(y, 0b010010010010010010010010010010010010010010010010010010010010ull);
-			build_object.morton_code |= _pdep_u64(z, 0b100100100100100100100100100100100100100100100100100100100100ull);
-		}
-
-		std::deque<BuildEvent> event_queue;
-		event_queue.emplace_back();
-		event_queue.back().start = 0;
-		event_queue.back().end = build_objects.size();
-		event_queue.back().node_index = 0; nodes.emplace_back();
-
-		while(!event_queue.empty())
-		{
-			BuildEvent current_build_event = event_queue.front(); event_queue.pop_front();
-
-			AABB aabb;
-			for(uint i = current_build_event.start; i < current_build_event.end; ++i)
-				aabb.add(build_objects[i].aabb);
-
-			uint splitting_index = current_build_event.split_build_objects(build_objects.data(), quality);
-			if(splitting_index != ~0)
-			{
-				nodes[current_build_event.node_index].aabb = aabb;
-				nodes[current_build_event.node_index].data.is_leaf = 0;
-				nodes[current_build_event.node_index].data.child_index = nodes.size();
-
-				for(uint i = 0; i < 2; ++i)
-					nodes.emplace_back();
-
-				event_queue.push_back({current_build_event.start, splitting_index, (uint)nodes.size() - 2});
-				event_queue.push_back({splitting_index, current_build_event.end, (uint)nodes.size() - 1});
-			}
-			else
-			{
-				//didn't do any splitting meaning this build event can become a leaf node
-				uint size = current_build_event.end - current_build_event.start;
-				assert(size <= MAX_PRIMS && size >= 1);
-
-				nodes[current_build_event.node_index].aabb = aabb;
-				nodes[current_build_event.node_index].data.is_leaf = 1;
-				nodes[current_build_event.node_index].data.num_prims = size;
-				nodes[current_build_event.node_index].data.prim_index = current_build_event.start;
-			}
-		}
-
-		//compute sah
-		std::vector<float> costs(nodes.size());
-		for(uint i = nodes.size() - 1; i < nodes.size(); --i)
-		{
-			costs[i] = 0.0f;
-			if(nodes[i].data.is_leaf)
-			{
-				for(uint j = 0; j < nodes[i].data.num_prims; ++j)
-					costs[i] += build_objects[nodes[i].data.prim_index + j].cost;
-			}
-			else
-			{
-				float sa = nodes[i].aabb.surface_area();
-				if(sa > 0.0f)
-				{
-					for(uint j = 0; j < 2; ++j)
-					{
-						uint ci = nodes[i].data.child_index + j;
-						costs[i] += AABB::cost() + costs[ci] * std::max(nodes[ci].aabb.surface_area(), 0.0f) / sa;
-					}
-				}
-			}
-		}
-		sah_cost = costs[0];
-
-		//printf("Built BVH2\n");
-		//printf("Quality: %d\n", quality);
-		//printf("Cost: %f\n", sah_cost);
-		//printf("Nodes: %d\n", (uint)nodes.size());
-		//printf("Objects: %d\n", (uint)build_objects.size());
 	}
 #endif
 };

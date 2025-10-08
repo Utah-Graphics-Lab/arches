@@ -35,6 +35,11 @@ public:
 	{
 		return rtm::normalize(rtm::cross(vrts[0] - vrts[2], vrts[1] - vrts[2]));
 	}
+
+	float surface_area()
+	{
+		return rtm::length(rtm::cross(vrts[0] - vrts[2], vrts[1] - vrts[2])) / 2.0f;
+	}
 };
 
 struct IntersectionTriangle

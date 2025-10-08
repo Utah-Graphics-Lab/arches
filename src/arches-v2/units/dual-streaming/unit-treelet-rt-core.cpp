@@ -391,7 +391,7 @@ void UnitTreeletRTCore<TT>::_simualte_tri_pipline()
 		rtm::vec3& inv_d = ray_state.inv_d;
 		rtm::Hit& hit = ray_state.hit;
 
-		rtm::IntersectionTriangle tris[rtm::FTB::MAX_PRIMS];
+		rtm::IntersectionTriangle tris[rtm::FTB::MAX_TRIS];
 		uint tri_count = rtm::decompress(buffer.ftb, 42, tris);
 
 		_tri_isect_index++;

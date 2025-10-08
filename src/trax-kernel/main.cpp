@@ -15,13 +15,36 @@ inline static uint32_t encode_pixel(rtm::vec3 in)
 	return out;
 }
 
+inline rtm::vec3 palette(float t)
+{
+	const float kr[] = {000.13572138f, 004.61539260f,-042.66032258f, 132.13108234f,-152.94239396f, 059.28637943f};
+	const float kg[] = {000.09140261f, 002.19418839f, 004.84296658f,-014.18503333f, 004.27729857f, 002.82956604f};
+	const float kb[] = {000.10667330f, 012.64194608f,-060.58204836f, 110.36276771f,-089.90310912f, 027.34824973f};
+
+	float t_pow = t = rtm::clamp(t, 0.0f, 1.0f);
+	rtm::vec3 color(kr[0], kg[0], kb[0]);
+	for(uint i = 1; i < 6; ++i)
+	{
+		color.r += kr[i] * t_pow;
+		color.g += kg[i] * t_pow;
+		color.b += kb[i] * t_pow;
+		t_pow *= t;
+	}
+
+	return rtm::clamp(color);
+}
+
+#ifndef  __riscv
+static std::atomic_uint node_steps = 0;
+static std::atomic_uint prim_steps = 0;
+#endif
+
 inline static void kernel(const TRaXKernelArgs& args)
 {
 	constexpr uint TILE_X = 4;
 	constexpr uint TILE_Y = 8;
 	constexpr uint TILE_SIZE = TILE_X * TILE_Y;
 	
-	uint node_steps = 0, prim_steps = 0;
 	for (uint index = fchthrd(); index < args.framebuffer_size; index = fchthrd())
 	{
 		uint tile_id = index / TILE_SIZE;
@@ -33,32 +56,35 @@ inline static void kernel(const TRaXKernelArgs& args)
 		uint32_t y = tile_y * TILE_Y + thread_id / TILE_X;
 		uint fb_index = y * args.framebuffer_width + x;
 		
-		//uint fb_index = index, x, y;
-		//deinterleave_bits(fb_index, x, y);
-
 		rtm::RNG rng(fb_index);
 		rtm::Ray ray = args.pregen_rays ? args.rays[fb_index] : args.camera.generate_ray_through_pixel(x, y);
-
-		//ray.t_min = u_to_f((f_to_u(ray.t_min) & 0xffff0000) | (tile_id & 0xffff));
-
 		rtm::Hit hit(ray.t_max, rtm::vec2(0.0f), ~0u);
 
+		IntersectStats stats;
 		#if defined(__riscv) && (TRAX_USE_RT_CORE)
 			_traceray<0x0u>(index, ray, hit);
 		#else
-			intersect(args.nodes, args.ft_blocks, ray, hit, node_steps, prim_steps);
+			intersect(args.nodes, args.ftbs, ray, hit, stats);
 		#endif
 
-		if(hit.id != ~0u)
+		if(hit.t < ray.t_max)
 		{
-			args.framebuffer[fb_index] = rtm::RNG::hash(hit.id) | 0xff000000;
+			rtm::vec3 n = args.tris[hit.id].normal();
+			uint hash = rtm::RNG::hash(hit.id) | 0xff'00'00'00;
+
+			args.framebuffer[fb_index] = hash;
+			args.framebuffer[fb_index] = encode_pixel(n * 0.5f + 0.5f);
 		}
 		else
 		{
 			args.framebuffer[fb_index] = 0xff000000;
 		}
 
-		//args.framebuffer[fb_index] = encode_pixel(steps / 64.0f);
+		//args.framebuffer[fb_index] = encode_pixel(palette(rtm::clamp(stats.total_steps() / 64.0f)));
+	#ifndef __riscv
+		node_steps += stats.node_steps;
+		prim_steps += stats.prim_steps;
+	#endif
 	}
 }
 
@@ -112,7 +138,7 @@ int main()
 
 int main(int argc, char* argv[])
 {
-	uint pregen_bounce = 0;
+	uint pregen_bounce = 1;
 	std::string scene_name = "intel-sponza";
 
 	TRaXKernelArgs args;
@@ -121,7 +147,7 @@ int main(int argc, char* argv[])
 	args.framebuffer_size = args.framebuffer_width * args.framebuffer_height;
 	args.framebuffer = new uint32_t[args.framebuffer_size];
 
-	args.pregen_rays = true;
+	args.pregen_rays = false;
 
 	args.light_dir = rtm::normalize(rtm::vec3(4.5f, 42.5f, 5.0f));
 	if(scene_name.compare("sibenik") == 0)
@@ -133,49 +159,44 @@ int main(int argc, char* argv[])
 	if(scene_name.compare("san-miguel") == 0)
 		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(7.448, 1.014, 12.357), rtm::vec3(7.448 + 0.608, 1.014 + 0.026, 12.357 - 0.794));
 
-	std::vector<rtm::BVH2::BuildObject> bos;
-	rtm::Mesh mesh("../../../datasets/" + scene_name + ".obj");
-	mesh.get_build_objects(bos);
-	rtm::BVH2 bvh2("../../../datasets/cache/" + scene_name + ".bvh", bos, 2);
-	mesh.reorder(bos);
-	printf("\n");
+	std::string mesh_path = "../../../datasets/" + scene_name + ".obj";
+	std::string bvh_cache_path = "../../../datasets/cache/" + scene_name + ".bvh";
+
+	rtm::Mesh mesh(mesh_path);
+	rtm::HECWBVH bvh(mesh, bvh_cache_path.c_str());
+
+	args.nodes = bvh.nodes.data();
+	args.ftbs = (rtm::FTB*)bvh.nodes.data();
 
 	std::vector<rtm::Ray> rays(args.framebuffer_size);
 	if(args.pregen_rays)
 	{
 		std::string ray_file = scene_name + "-" + std::to_string(args.framebuffer_width) + "-" + std::to_string(pregen_bounce) + ".rays";
-		pregen_rays(args.framebuffer_width, args.framebuffer_height, args.camera, bvh2, mesh, pregen_bounce, rays);
+		pregen_rays(args.nodes, args.ftbs, mesh, args.framebuffer_width, args.framebuffer_height, args.camera, pregen_bounce, rays);
 		args.rays = rays.data();
 	}
-	printf("\n");
 
-#if USE_HEBVH
-	rtm::WBVH wbvh(bvh2, bos, &mesh, false);
-	mesh.reorder(bos);
-	rtm::HECWBVH hecwbvh(wbvh, (uint8_t*)wbvh.ft_blocks.data(), sizeof(rtm::FTB));
-	args.nodes = hecwbvh.nodes.data();
-	args.ft_blocks = (rtm::FTB*)args.nodes;
-#else
-	rtm::WBVH wbvh(bvh2, bos, &mesh, false);
-	mesh.reorder(bos);
-	rtm::NVCWBVH nvcwbvh(wbvh);
-	args.nodes = nvcwbvh.nodes.data();
-	args.ft_blocks = wbvh.ft_blocks.data();
-#endif
+	std::vector<rtm::Triangle> tris;
+	mesh.get_triangles(tris);
+	args.tris = tris.data();
 
+	reset_fchthrd();
 	printf("\nStarting Taveral\n");
 	auto start = std::chrono::high_resolution_clock::now();
 
 	std::vector<std::thread> threads;
 	uint thread_count = 1;
-	//thread_count = std::max(std::thread::hardware_concurrency() - 1u, 1u);
+	thread_count = std::max(std::thread::hardware_concurrency() - 1u, 1u);
 	for (uint i = 1; i < thread_count; ++i) threads.emplace_back(kernel, args);
 	kernel(args);
-	for (uint i = 1; i < thread_count; ++i) threads[i].join();
+	for (uint i = 1; i < thread_count; ++i) threads[i - 1].join();
 
 	auto stop = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
 	printf("Runtime: %dms\n", (uint)duration.count());
+	printf("Node steps: %5.2f\n", (float)node_steps.load() / args.framebuffer_size);
+	printf("Prim steps: %5.2f\n", (float)prim_steps.load() / args.framebuffer_size);
+	printf("Memory Traffic: %.1f B/ray\n", (float)(node_steps.load() + prim_steps.load()) * 128 / args.framebuffer_size);
 
 	stbi_flip_vertically_on_write(true);
 	stbi_write_png("./out.png", args.framebuffer_width, args.framebuffer_height, 4, args.framebuffer, 0);

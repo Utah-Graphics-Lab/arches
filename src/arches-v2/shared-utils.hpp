@@ -4,7 +4,6 @@
 #include "simulator/simulator.hpp"
 
 #include "units/unit-dram.hpp"
-#include "units/unit-dram-ramulator.hpp"
 #include "units/unit-cache.hpp"
 #include "units/unit-crossbar.hpp"
 #include "units/unit-buffer.hpp"
@@ -36,8 +35,6 @@ static T* write_array(Units::UnitMainMemoryBase* main_memory, size_t alignment, 
 	heap_address = array_address + size * sizeof(T);
 	main_memory->direct_write(data, size * sizeof(T), array_address);
 	return reinterpret_cast<T*>(array_address);
-
-
 }
 
 template <typename T>

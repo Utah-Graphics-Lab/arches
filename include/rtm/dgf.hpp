@@ -1283,124 +1283,36 @@ public:
         return meta.numTris;
     }
 
-#if 0
-    BVH2 build_bvh(std::vector<BVH2::BuildObject>& build_objects, bool fast = true)
-    {
-        build_objects.clear();
-        get_build_objects(build_objects);
-        BVH2 bvh(build_objects);
-        reorder(build_objects);
+    //void get_build_objects(std::vector<BVH::BuildObject>& build_objects)
+    //{
+    //    for(uint32_t i = 0; i < blocks.size(); ++i)
+    //        build_objects.push_back(get_build_object(i));
+    //}
 
-        if(!fast)
-        {
-            build_objects.clear();
-            uint top_level_nodes = bvh.nodes.size();
-            for(uint i = 0; i < top_level_nodes; ++i)
-            {
-                if(!bvh.nodes[i].data.is_leaf) continue;
+    //BVH::BuildObject get_build_object(uint i)
+    //{
+    //    IntersectionTriangle tris[DGF::MAX_TRIS];
+    //    uint num_tris = decompress_block(blocks[i], tris);
 
-                uint root_index = bvh.nodes.size();
-                uint block_index = bvh.nodes[i].data.prim_index;
-                bvh.nodes[i].data.is_leaf = 0;
-                bvh.nodes[i].data.child_index = root_index;
+    //    BVH::BuildObject build_object;
+    //    build_object.cost = 1.0;
+    //    build_object.index = i;
+    //    for(uint j = 0; j < num_tris; ++j)
+    //        build_object.aabb = tris[j].tri.aabb();
 
-                std::vector<BVH2::BuildObject> temp_build_objects;
-                get_build_objects(temp_build_objects, block_index);
-                BVH2 block_bvh(temp_build_objects);
-                temp_build_objects.clear();
+    //    return build_object;
+    //}
 
-                for(uint j = 0; j < block_bvh.nodes.size(); ++j)
-                {
-                    BVH2::Node node = block_bvh.nodes[j];
-                    if(node.data.is_leaf)
-                    {
-                        BVH2::BuildObject bobj;
-                        bobj.cost = 1.0f;
-                        bobj.index = block_index;
-                        bobj.aabb = node.aabb;
-                        node.data.prim_index = build_objects.size();
-                        build_objects.push_back(bobj);
-                    }
-                    else
-                    {
-                        node.data.child_index += root_index;
-                    }
-                    bvh.nodes.push_back(node);
-                }
-            }
-        }
-
-        return bvh;
-    }
-#endif
-
-    void get_build_objects(std::vector<BVH2::BuildObject>& build_objects)
-    {
-        for(uint32_t i = 0; i < blocks.size(); ++i)
-        {
-            IntersectionTriangle tris[DGF::MAX_TRIS];
-            uint num_tris = decompress_block(blocks[i], tris);
-
-            {
-                std::vector<BVH2::BuildObject> temp_build_objects;
-                get_build_objects(temp_build_objects, i);
-
-                std::queue<BVH2::BuildEvent> events;
-                events.emplace(0, temp_build_objects.size(), 0);
-
-                //uint split = events.front().split_build_objects_sah(temp_build_objects.data());
-                //if(split != ~0u)
-                //{
-                //    events.emplace(events.front().start, split, 0);
-                //    events.emplace(split, events.front().end, split, 0);
-                //    events.pop();
-                //}
-                //else
-                //{
-                //    events.push(events.front());
-                //    events.pop();
-                //}
-
-                while(!events.empty())
-                {
-                    BVH2::BuildObject build_object;
-                    build_object.cost = 1.0;
-                    build_object.index = i;
-                    build_object.aabb = AABB();
-                    for(uint j = events.front().start; j < events.front().end; ++j)
-                        build_object.aabb.add(tris[j].tri.aabb());
-                    build_objects.push_back(build_object);
-                    events.pop();
-                }
-            }
-        }
-    }
-
-    void get_build_objects(std::vector<BVH2::BuildObject>& build_objects, uint i)
-    {
-        IntersectionTriangle tris[DGF::MAX_TRIS];
-        uint num_tris = decompress_block(blocks[i], tris);
-
-        for(uint j = 0; j < num_tris; ++j)
-        {
-            BVH2::BuildObject build_object;
-            build_object.cost = 1.0;
-            build_object.index = i;
-            build_object.aabb = tris[j].tri.aabb();
-            build_objects.push_back(build_object);
-        }
-    }
-
-    void reorder(std::vector<BVH2::BuildObject>& ordered_build_objects)
-    {
-        std::vector<Block> tmp_blocks(blocks);
-        blocks.resize(ordered_build_objects.size());
-        for(uint32_t i = 0; i < ordered_build_objects.size(); ++i)
-        {
-            blocks[i] = tmp_blocks[ordered_build_objects[i].index];
-            ordered_build_objects[i].index = i;
-        }
-    }
+    //void reorder(std::vector<BVH::BuildObject>& ordered_build_objects)
+    //{
+    //    std::vector<Block> tmp_blocks(blocks);
+    //    blocks.resize(ordered_build_objects.size());
+    //    for(uint32_t i = 0; i < ordered_build_objects.size(); ++i)
+    //    {
+    //        blocks[i] = tmp_blocks[ordered_build_objects[i].index];
+    //        ordered_build_objects[i].index = i;
+    //    }
+    //}
 #endif
 };
 

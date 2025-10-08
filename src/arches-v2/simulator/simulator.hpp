@@ -31,10 +31,6 @@ public:
 
 	void register_unit(Units::UnitBase* unit);
 	void new_unit_group();
-
-	void _clock_rise();
-	void _clock_fall();
-
 	void execute(uint epsilon = 0, std::function<void()> interval_logger = nullptr);
 };
 

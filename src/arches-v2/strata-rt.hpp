@@ -163,22 +163,22 @@ static STRaTARTKernel::Args initilize_buffers(Units::UnitMainMemoryBase* main_me
 	args.camera = sim_config.camera;
 
 	rtm::Mesh mesh(scene_file);
-	std::vector<rtm::BVH2::BuildObject> build_objects;
+	std::vector<rtm::BVH::BuildObject> build_objects;
 	mesh.get_build_objects(build_objects);
 
-	rtm::BVH2 bvh2(bvh_cache_filename, build_objects);
+	rtm::BVH bvh2(bvh_cache_filename, build_objects);
 	mesh.reorder(build_objects);
 
 	std::vector<rtm::Ray> rays(args.framebuffer_size);
 	if(args.pregen_rays)
 		pregen_rays(args.framebuffer_width, args.framebuffer_height, args.camera, bvh2, mesh, sim_config.get_int("pregen_bounce"), rays);
 
-	rtm::WBVH wbvh(bvh2, build_objects, &mesh, false);
-	mesh.reorder(build_objects);
+	//rtm::WBVH wbvh(bvh2, build_objects, &mesh, false);
+	//mesh.reorder(build_objects);
 
-	rtm::NVCWBVH cwbvh(wbvh);
-	rtm::CompressedWideTreeletBVH cwtbvh(cwbvh, wbvh.ft_blocks.data());
-	args.treelets = write_vector(main_memory, page_size, cwtbvh.treelets, heap_address);
+	//rtm::NVCWBVH cwbvh(wbvh);
+	//rtm::CompressedWideTreeletBVH cwtbvh(cwbvh, wbvh.ft_blocks.data());
+	//args.treelets = write_vector(main_memory, page_size, cwtbvh.treelets, heap_address);
 
 	std::vector<rtm::Triangle> tris;
 	mesh.get_triangles(tris);

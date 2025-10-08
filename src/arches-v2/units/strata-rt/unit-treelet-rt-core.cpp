@@ -385,7 +385,7 @@ void UnitTreeletRTCore::_simualte_intersectors()
 		RayState& ray_state = _ray_states[ray_id];
 		StagingBuffer& buffer = ray_state.buffer;
 
-		rtm::IntersectionTriangle tris[rtm::FTB::MAX_PRIMS];
+		rtm::IntersectionTriangle tris[rtm::FTB::MAX_TRIS];
 		uint tri_count = rtm::decompress(buffer.ftb, 42, tris);
 
 		_tris_issued++;

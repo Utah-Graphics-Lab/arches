@@ -1,6 +1,5 @@
 #include "ramulator2/src/base/config.h"
 
-
 namespace Ramulator {
 
 namespace fs = std::filesystem;

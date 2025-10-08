@@ -11,34 +11,45 @@ struct BitArray
     
     uint64_t read(uint index, uint size) const
     {
+        if(size == 0) return 0;
         uint64_t background_data = 0;
+        uint64_t mask = (0x1ull << size) - 1;
+
+        uint shft = index & 0x7;
         uint start_byte = index >> 3;
-        uint end_byte = (index + size + 7) >> 3;
+        uint last_bit = index + size - 1;
+        uint end_byte = (last_bit >> 3) + 1;
 
         const uint8_t* cpy_ptr = data + start_byte;
         uint cpy_size = end_byte - start_byte;
-        std::memcpy(&background_data, cpy_ptr, cpy_size);
+        for(uint i = 0; i < cpy_size; ++i)
+            background_data |= ((uint64_t)cpy_ptr[i]) << (i << 3);
 
-        uint shft = index & 0x7;
-        uint64_t mask = (0x1ull << size) - 1;
         return (background_data >> shft) & mask;
     }
     
     void write(uint index, uint size, uint64_t value)
     {
+        if(size == 0) return;
         uint64_t background_data = 0;
+        uint64_t mask = (0x1ull << size) - 1;
+        value = value & mask;
+
+        uint shft = index & 0x7;
         uint start_byte = index >> 3;
-        uint end_byte = (index + size + 7) >> 3;
+        uint last_bit = index + size - 1;
+        uint end_byte = (last_bit >> 3) + 1;
 
         uint8_t* cpy_ptr = data + start_byte;
         uint cpy_size = end_byte - start_byte;
-        std::memcpy(&background_data, cpy_ptr, cpy_size);
+        for(uint i = 0; i < cpy_size; ++i)
+            background_data |= ((uint64_t)cpy_ptr[i]) << (i << 3);
         
-        uint shft = index & 0x7;
-        uint64_t mask = (0x1ull << size) - 1;
         background_data &= ~(mask << shft);
         background_data |= value << shft;
-        std::memcpy(cpy_ptr, &background_data, cpy_size);
+
+        for(uint i = 0; i < cpy_size; ++i)
+            cpy_ptr[i] = (uint8_t)(background_data >> (i << 3));
     }
 };
 

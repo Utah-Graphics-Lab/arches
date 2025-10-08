@@ -10,6 +10,8 @@ namespace rtm
 
 inline float intersect(const AABB& aabb, const rtm::Ray& ray, const rtm::vec3& inv_d)
 {
+	if(aabb.max.x < aabb.min.x) return ray.t_max; //degenerate box
+
 	rtm::vec3 t0 = (aabb.min - ray.o) * inv_d;
 	rtm::vec3 t1 = (aabb.max - ray.o) * inv_d;
 
@@ -19,13 +21,13 @@ inline float intersect(const AABB& aabb, const rtm::Ray& ray, const rtm::vec3& i
 	float tmin = max(max(tminv.x, tminv.y), max(tminv.z, ray.t_min));
 	float tmax = min(min(tmaxv.x, tmaxv.y), min(tmaxv.z, ray.t_max));
 
-	if (tmin > tmax || tmax < ray.t_min) return ray.t_max;//no hit || behind
+	if (tmin > tmax || tmax <= ray.t_min) return ray.t_max; //no hit || behind
 	return tmin;
 }
 
 inline bool intersect(const rtm::Triangle& tri, const rtm::Ray& ray, rtm::Hit& hit)
 {
-#if 0
+#if 1
 	rtm::vec3 bc;
 	bc[0] = rtm::dot(rtm::cross(tri.vrts[2] - tri.vrts[1], tri.vrts[1] - ray.o), ray.d);
 	bc[1] = rtm::dot(rtm::cross(tri.vrts[0] - tri.vrts[2], tri.vrts[2] - ray.o), ray.d);
@@ -33,14 +35,15 @@ inline bool intersect(const rtm::Triangle& tri, const rtm::Ray& ray, rtm::Hit& h
 		
 	rtm::vec3 gn = rtm::cross(tri.vrts[1] - tri.vrts[0], tri.vrts[2] - tri.vrts[0]);
 	float gn_dot_d = rtm::dot(gn, ray.d);
-
 	if(gn_dot_d > 0.0f) bc = -bc;
-	if(bc[0] < 0.0f || bc[1] < 0.0f || bc[2] < 0.0f) return false;
+
+	if(abs(gn_dot_d) < 1.0e-3f || bc[0] < 0.0f || bc[1] < 0.0f || bc[2] < 0.0f) return false;
 
 	float t = rtm::dot(gn, tri.vrts[0] - ray.o) / gn_dot_d;
-	if(t < ray.t_min || t > hit.t) return false;
+	if(t <= ray.t_min || t > hit.t) return false;
 
-	hit.bc = rtm::vec2(bc.x, bc.y) / (bc[0] + bc[1] + bc[2]);
+	float rcp = 1.0f / (bc[0] + bc[1] + bc[2]);
+	hit.bc = rtm::vec2(bc.x, bc.y) * rcp;
 	hit.t = t ;
 	return true;
 #else

@@ -4,7 +4,7 @@
 namespace Arches { namespace Units { namespace TRaX {
 
 //#define ENABLE_RT_DEBUG_PRINTS (unit_id == 4)
-//#define ENABLE_RT_DEBUG_PRINTS (unit_id == 4 && ray_id == 0)
+//#define ENABLE_RT_DEBUG_PRINTS (unit_id == 22 && ray_id == 0)
 
 #ifndef ENABLE_RT_DEBUG_PRINTS 
 #define ENABLE_RT_DEBUG_PRINTS (false)
@@ -14,7 +14,7 @@ template<typename NT, typename PT>
 UnitRTCore<NT, PT>::UnitRTCore(const Configuration& config) :
 	_max_rays(config.max_rays), _node_base_addr(config.node_base_addr), _tri_base_addr(config.tri_base_addr), _vrt_base_addr(config.vrt_base_addr),
 	_cache(config.cache), _request_network(config.num_clients, 1), _return_network(1, config.num_clients),
-	_box_pipline(3), _tri_pipline(22), _cache_port(config.cache_port), _cache_port_stride(config.cache_port_stride)
+	_box_pipline(12), _tri_pipline(22), _cache_port(config.cache_port), _cache_port_stride(config.cache_port_stride)
 {
 	_ray_states.resize(config.max_rays);
 	for(uint i = 0; i < _ray_states.size(); ++i)
@@ -160,7 +160,7 @@ void UnitRTCore<NT, PT>::_read_requests()
 		ray_state.hit.id = ~0u;
 		ray_state.stack[0].t = ray_state.ray.t_min;
 		ray_state.stack[0].data.is_int = 1;
-		ray_state.stack[0].data.child_index = 0;
+		ray_state.stack[0].data.child_idx = 0;
 		ray_state.stack[0].is_last = false;
 		ray_state.stack_size = 1;
 		ray_state.level = 0;
@@ -262,7 +262,7 @@ void UnitRTCore<NT, PT>::_schedule_ray()
 				//Restart
 				entry.t = ray_state.ray.t_min;
 				entry.data.is_int = 1;
-				entry.data.child_index = 0;
+				entry.data.child_idx = 0;
 				ray_state.level = 0;
 				log.restarts++;
 			}
@@ -286,20 +286,20 @@ void UnitRTCore<NT, PT>::_schedule_ray()
 		{
 			if(entry.data.is_int)
 			{
-				_try_queue_node(ray_id, entry.data.child_index);
+				_try_queue_node(ray_id, entry.data.child_idx);
 				ray_state.phase = RayState::Phase::NODE_FETCH;
 
 				log.issue_counters[(uint)IssueType::NODE_FETCH]++;
 				if(ENABLE_RT_DEBUG_PRINTS)
-					printf("%03d NODE_FETCH: %d\n", ray_id, entry.data.child_index);
+					printf("%03d NODE_FETCH: %d\n", ray_id, entry.data.child_idx);
 			}
 			else
 			{
-				_try_queue_tri(ray_id, entry.data.prim_index);
-				if(entry.data.num_prims > 1)
+				_try_queue_tri(ray_id, entry.data.prim_idx);
+				if(entry.data.prim_cnt > 1)
 				{
-					entry.data.num_prims--;
-					entry.data.prim_index++;
+					entry.data.prim_cnt--;
+					entry.data.prim_idx++;
 					ray_state.stack[ray_state.stack_size++] = entry;
 					ray_state.update_restart_trail = false;
 				}
@@ -308,7 +308,7 @@ void UnitRTCore<NT, PT>::_schedule_ray()
 
 				log.issue_counters[(uint)IssueType::TRI_FETCH]++;
 				if(ENABLE_RT_DEBUG_PRINTS)
-					printf("%03d TRI_FETCH: %d:%d\n", ray_id, entry.data.prim_index, entry.data.num_prims);
+					printf("%03d TRI_FETCH: %d:%d\n", ray_id, entry.data.prim_idx, entry.data.prim_cnt);
 			}
 		}
 		else //pop cull
@@ -342,13 +342,13 @@ void UnitRTCore<NT, PT>::_simualte_node_pipline()
 		const rtm::vec3& inv_d = ray_state.inv_d;
 		const rtm::WBVH::Node node = rtm::decompress(ray_state.buffer.node);
 
-		_box_issue_count += rtm::WBVH::WIDTH;
+		_box_issue_count += 16;
 		if(_box_issue_count >= node.num_aabb())
 		{
 			uint k = ray_state.restart_trail.get(ray_state.level);
 
 			uint nodes_pushed = 0;
-			for(uint i = 0; i < rtm::WBVH::WIDTH; i++)
+			for(uint i = 0; i < rtm::WBVH::MAX_WIDTH; i++)
 			{
 				if(!node.is_valid(i)) continue;
 
@@ -364,7 +364,7 @@ void UnitRTCore<NT, PT>::_simualte_node_pipline()
 
 					ray_state.stack[j].t = t;
 					ray_state.stack[j].is_last = false;
-					ray_state.stack[j].data = node.data[i];
+					ray_state.stack[j].data = node.ptr[i];
 				}
 			}
 

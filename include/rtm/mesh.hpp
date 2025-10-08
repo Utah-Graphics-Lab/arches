@@ -4,7 +4,6 @@
 #include "vec3.hpp"
 #include "uvec3.hpp"
 #include "triangle.hpp"
-#include "bvh.hpp"
 
 #ifndef __riscv
 #include <vector>
@@ -279,23 +278,6 @@ public:
 			triangles.emplace_back(get_triangle(i));
 	}
 
-	BVH2::BuildObject get_build_object(uint i) const
-	{
-		Triangle triangle = get_triangle(i);
-		BVH2::BuildObject build_object;
-		build_object.aabb = triangle.aabb();
-		build_object.cost = triangle.cost();
-		build_object.index = i;
-		return build_object;
-	}
-
-	void get_build_objects(std::vector<BVH2::BuildObject>& build_objects) const
-	{
-		build_objects.clear();
-		for(uint32_t i = 0; i < vertex_indices.size(); ++i)
-			build_objects.push_back(get_build_object(i));
-	}
-
 	uint8_t quantize_verts()
 	{
 		float32_bf max(0.0f);
@@ -318,41 +300,7 @@ public:
 		}
 		printf("Mesh: Quantized with exp: %f\n", rtm::float32_bf(0, exp, 0).f32);
 
-
 		return exp;
-	}
-
-	void reorder(std::vector<BVH2::BuildObject>& ordered_build_objects)
-	{
-		assert(ordered_build_objects.size() == vertex_indices.size());
-		std::vector<rtm::uvec3> tmp_vrt_inds(vertex_indices);
-		std::vector<rtm::uvec3> tmp_nrml_inds(normal_indices);
-		std::vector<rtm::uvec3> tmp_txcd_inds(tex_coord_indices);
-		std::vector<uint>       tmp_mat_inds(material_indices);
-		for (uint32_t i = 0; i < ordered_build_objects.size(); ++i)
-		{
-			vertex_indices[i]    = tmp_vrt_inds [ordered_build_objects[i].index];
-			normal_indices[i]    = tmp_nrml_inds[ordered_build_objects[i].index];
-			tex_coord_indices[i] = tmp_txcd_inds[ordered_build_objects[i].index];
-			material_indices[i]  = tmp_mat_inds [ordered_build_objects[i].index];
-			ordered_build_objects[i].index = i;
-		}
-	}
-
-	void reorder(const std::vector<uint>& face_indices)
-	{
-		assert(face_indices.size() == vertex_indices.size());
-		std::vector<rtm::uvec3> tmp_vrt_inds(vertex_indices);
-		std::vector<rtm::uvec3> tmp_nrml_inds(normal_indices);
-		std::vector<rtm::uvec3> tmp_txcd_inds(tex_coord_indices);
-		std::vector<uint>       tmp_mat_inds(material_indices);
-		for(uint32_t i = 0; i < face_indices.size(); ++i)
-		{
-			vertex_indices[i] = tmp_vrt_inds[face_indices[i]];
-			normal_indices[i] = tmp_nrml_inds[face_indices[i]];
-			tex_coord_indices[i] = tmp_txcd_inds[face_indices[i]];
-			material_indices[i] = tmp_mat_inds[face_indices[i]];
-		}
 	}
 };
 
