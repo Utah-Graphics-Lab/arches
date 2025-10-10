@@ -44,10 +44,10 @@ public:
 		rtm::BVH::BuildArgs args;
 		args.cache_path = cache_path;
 		args.width = WIDTH;
-		args.max_prims = 3;
+		args.max_prims = FTB::MAX_TRIS;
 		args.build_method = BVH::SAH;
 		args.collapse_method = BVH::DYNAMIC;
-		args.leaf_cost = BVH::CONSTANT;
+		args.leaf_cost = BVH::FTB;
 
 		rtm::BVH bvh(mesh, args);
 
@@ -97,11 +97,10 @@ public:
 
 		size_t internal_size = sizeof(Node) * nodes.size();
 		size_t leaf_size = sizeof(Node) * ftbs.size();
-		printf("NVCWBVH%d: Size: %.1f MiB (%.1f B/tri)\n", WIDTH, (float)internal_size / (1 << 20), (float)internal_size / total_tris);
-		printf("FTB: Size: %.1f MiB (%.1f B/tri)\n", (float)leaf_size / (1 << 20), (float)leaf_size / total_tris);
-		//printf("FTB: AVG: %6.2f\n", (float)total_tris / ftbs.size());
-		//for(uint i = 0; i < FTB::MAX_TRIS; ++i) 
-		//	printf("FTB: %02d: %6.2f%%\n", i + 1, 100.0f * histo[i] / ftbs.size());
+		size_t total_size = internal_size + leaf_size;
+		printf("NVCWBVH%d: Node Size:  %6.1f MiB (%4.1f B/tri)\n", WIDTH, (float)internal_size / (1 << 20), (float)internal_size / total_tris);
+		printf("NVCWBVH%d: Leaf Size:  %6.1f MiB (%4.1f B/tri)\n", WIDTH, (float)leaf_size / (1 << 20), (float)leaf_size / total_tris);
+		printf("NVCWBVH%d: Total Size: %6.1f MiB (%4.1f B/tri)\n", WIDTH, (float)total_size / (1 << 20), (float)total_size / total_tris);
 	}
 
 	static bool compress(const BVH::Node* nodes, const uint* indices, uint node_cnt, NVCWBVH::Node& cwnode)

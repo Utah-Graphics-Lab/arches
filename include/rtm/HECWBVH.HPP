@@ -50,10 +50,9 @@ public:
 		args.width = WIDTH;
 		args.max_prims = FTB::MAX_TRIS;
 		args.build_method = BVH::SAH;
-		args.collapse_method = BVH::DYNAMIC;
+		args.collapse_method = BVH::GREEDY;
 		args.leaf_cost = BVH::FTB;
-
-		args.merge_nodes = false;
+		args.merge_nodes = true;
 		args.merge_leafs = false;
 
 		rtm::BVH bvh(mesh, args);

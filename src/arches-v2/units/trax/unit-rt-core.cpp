@@ -1,5 +1,4 @@
 #include "unit-rt-core.hpp"
-#include "rtm/hecwbvh.hpp"
 
 namespace Arches { namespace Units { namespace TRaX {
 
@@ -340,19 +339,21 @@ void UnitRTCore<NT, PT>::_simualte_node_pipline()
 		rtm::Hit& hit = ray_state.hit;
 		const rtm::Ray& ray = ray_state.ray;
 		const rtm::vec3& inv_d = ray_state.inv_d;
-		const rtm::WBVH::Node node = rtm::decompress(ray_state.buffer.node);
 
-		_box_issue_count += 16;
-		if(_box_issue_count >= node.num_aabb())
+		rtm::BVH::Node nodes[32];
+		uint node_count = rtm::decompress(ray_state.buffer.node, nodes);
+
+		_box_issue_count += 32;
+		if(_box_issue_count >= node_count)
 		{
 			uint k = ray_state.restart_trail.get(ray_state.level);
 
-			uint nodes_pushed = 0;
-			for(uint i = 0; i < rtm::WBVH::MAX_WIDTH; i++)
+			uint nodes_pushed = 0, last_ptr = ~0u;
+			for(uint i = 0; i < node_count; i++)
 			{
-				if(!node.is_valid(i)) continue;
+				if(nodes[i].ptr.raw == last_ptr) continue;
 
-				float t = rtm::intersect(node.aabb[i], ray, inv_d);
+				float t = rtm::intersect(nodes[i].aabb, ray, inv_d);
 				if(t < hit.t)
 				{
 					uint j = ray_state.stack_size + nodes_pushed++;
@@ -364,7 +365,8 @@ void UnitRTCore<NT, PT>::_simualte_node_pipline()
 
 					ray_state.stack[j].t = t;
 					ray_state.stack[j].is_last = false;
-					ray_state.stack[j].data = node.ptr[i];
+					ray_state.stack[j].data = nodes[i].ptr;
+					last_ptr = nodes[i].ptr.raw;
 				}
 			}
 
@@ -422,8 +424,8 @@ void UnitRTCore<NT, PT>::_simualte_tri_pipline()
 		RayState& ray_state = _ray_states[ray_id];
 		StagingBuffer& buffer = ray_state.buffer;
 
-		rtm::IntersectionTriangle tris[DGF::MAX_TRIS];
-		uint tri_count = rtm::decompress(buffer.prim, buffer.id, tris);
+		rtm::IntersectionTriangle tris[rtm::FTB::MAX_TRIS];
+		uint tri_count = rtm::decompress(buffer.prim, tris);
 
 		_tri_issue_count += tri_count;
 		if(_tri_issue_count >= tri_count)
@@ -434,7 +436,7 @@ void UnitRTCore<NT, PT>::_simualte_tri_pipline()
 
 			for(uint i = 0; i < tri_count; ++i)
 				if(rtm::intersect(tris[i].tri, ray, hit))
-					hit.id = buffer.id + i;
+					hit.id = tris[i].id;
 
 			_tri_pipline.write(ray_id);
 			_tri_isect_queue.pop();
@@ -505,17 +507,7 @@ void UnitRTCore<NT, PT>::_issue_returns()
 	}
 }
 
-template class UnitRTCore<rtm::WBVH::Node, rtm::FTB>;
-template class UnitRTCore<rtm::WBVH::Node, rtm::QTB>;
-template class UnitRTCore<rtm::WBVH::Node, rtm::DGFMesh::Block>;
-template class UnitRTCore<rtm::NVCWBVH::Node, rtm::DGFMesh::Block>;
-template class UnitRTCore<rtm::NVCWBVH::Node, rtm::QTB>;
 template class UnitRTCore<rtm::NVCWBVH::Node, rtm::FTB>;
-template class UnitRTCore<rtm::NVCWBVH::Node, rtm::Triangle>;
 template class UnitRTCore<rtm::HECWBVH::Node, rtm::FTB>;
-template class UnitRTCore<rtm::HECWBVH::Node, rtm::QTB>;
-template class UnitRTCore<rtm::HECWBVH::Node, rtm::DGFMesh::Block>;
-
-
 
 }}}

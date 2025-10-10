@@ -135,6 +135,7 @@ public:
 				_serialize(args.cache_path, bld_objs);
 		}
 
+		sah_cost = _compute_cost(bld_objs);
 		_reorder(mesh, bld_objs);
 
 		if(args.width > 2)
@@ -143,8 +144,6 @@ public:
 			printf("BVH2: Collapsing\n");
 			_collapse(bld_objs);
 		}
-
-		sah_cost = _compute_cost(bld_objs);
 
 		if(args.merge_nodes)
 		{
@@ -948,6 +947,50 @@ private:
 		return succeeded;
 	}
 #endif
+};
+
+struct RestartTrail
+{
+	const static uint N = 15;
+	const static uint BITS_PER_LEVEL = 4;
+
+	rtm::BitArray<128> data;
+
+	uint find_parent_level(uint level) const
+	{
+		for(uint i = level - 1; i < ~0u; --i)
+			if(get(i) < N)
+				return i;
+		return ~0u;
+	}
+
+	uint get(uint level) const
+	{
+		assert(level < 64 / BITS_PER_LEVEL);
+		return data.read(level * BITS_PER_LEVEL, BITS_PER_LEVEL);
+	}
+
+	void set(uint level, uint value)
+	{
+		assert(level < 64 / BITS_PER_LEVEL);
+		data.write(level * BITS_PER_LEVEL, BITS_PER_LEVEL, value);
+	}
+
+	void clear(uint start_level)
+	{
+		for(uint i = start_level; i < 64 / BITS_PER_LEVEL; ++i)
+			set(i, 0);
+	}
+
+	bool is_done()
+	{
+		return get(0) >= N;
+	}
+
+	void mark_done()
+	{
+		set(0, N);
+	}
 };
 
 }

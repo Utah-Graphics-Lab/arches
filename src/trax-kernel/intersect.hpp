@@ -235,9 +235,10 @@ inline bool intersect(const N* nodes, const P* prims, const rtm::Ray& ray, rtm::
 			uint tri_count = rtm::decompress(prims[entry.ptr.prim_idx], tris);
 			for(uint i = 0; i < tri_count; ++i)
 				if(_intersect(tris[i].tri, ray, hit))
+				{
 					hit.id = tris[i].id;
-
-			if(hit.t == INFINITY) __debugbreak();
+					found_hit = true;
+				}
 		#else
 			if(entry.t < hit.t)
 			{

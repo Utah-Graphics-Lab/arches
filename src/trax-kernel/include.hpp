@@ -5,6 +5,16 @@
 #define TRAX_USE_HARDWARE_INTERSECTORS 0
 #define TRAX_KERNEL_ARGS_ADDRESS 256ull
 
+#define USE_HECWBVH 1
+
+namespace rtm {
+#if USE_HECWBVH
+typedef rtm::HECWBVH CWBVH;
+#else
+typedef rtm::NVCWBVH CWBVH;
+#endif
+}
+
 struct TRaXKernelArgs
 {
 	uint32_t framebuffer_width;
@@ -18,9 +28,7 @@ struct TRaXKernelArgs
 	rtm::vec3 light_dir;
 	rtm::Ray* rays;
 
-	rtm::HECWBVH::Node* nodes;
-	//rtm::NVCWBVH::Node* nodes;
-
+	rtm::CWBVH::Node* nodes;
 	rtm::FTB* ftbs;
 	rtm::Triangle* tris;
 };

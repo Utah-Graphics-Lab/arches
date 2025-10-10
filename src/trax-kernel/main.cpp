@@ -69,11 +69,11 @@ inline static void kernel(const TRaXKernelArgs& args)
 
 		if(hit.t < ray.t_max)
 		{
-			rtm::vec3 n = args.tris[hit.id].normal();
+			//rtm::vec3 n = args.tris[hit.id].normal();
 			uint hash = rtm::RNG::hash(hit.id) | 0xff'00'00'00;
 
 			args.framebuffer[fb_index] = hash;
-			args.framebuffer[fb_index] = encode_pixel(n * 0.5f + 0.5f);
+			//args.framebuffer[fb_index] = encode_pixel(n * 0.5f + 0.5f);
 		}
 		else
 		{
@@ -147,7 +147,7 @@ int main(int argc, char* argv[])
 	args.framebuffer_size = args.framebuffer_width * args.framebuffer_height;
 	args.framebuffer = new uint32_t[args.framebuffer_size];
 
-	args.pregen_rays = false;
+	args.pregen_rays = true;
 
 	args.light_dir = rtm::normalize(rtm::vec3(4.5f, 42.5f, 5.0f));
 	if(scene_name.compare("sibenik") == 0)
@@ -163,10 +163,15 @@ int main(int argc, char* argv[])
 	std::string bvh_cache_path = "../../../datasets/cache/" + scene_name + ".bvh";
 
 	rtm::Mesh mesh(mesh_path);
-	rtm::HECWBVH bvh(mesh, bvh_cache_path.c_str());
+	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str());
 
 	args.nodes = bvh.nodes.data();
-	args.ftbs = (rtm::FTB*)bvh.nodes.data();
+
+#if USE_HECWBVH
+	args.ftbs = (rtm::FTB*)args.nodes;
+#else
+	args.ftbs = bvh.ftbs.data();
+#endif
 
 	std::vector<rtm::Ray> rays(args.framebuffer_size);
 	if(args.pregen_rays)

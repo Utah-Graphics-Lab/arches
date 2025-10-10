@@ -1,7 +1,10 @@
 #pragma once
+
 #include "shared-utils.hpp"
 #include "units/trax/unit-tp.hpp"
 #include "units/trax/unit-rt-core.hpp"
+#include "trax-kernel/include.hpp"
+#include "trax-kernel/intersect.hpp"
 
 namespace Arches {
 
@@ -113,19 +116,11 @@ const static InstructionInfo custom0(CUSTOM_OPCODE0, META_DECL{return isa_custom
 
 namespace TRaX {
 
-#include "trax-kernel/include.hpp"
-#include "trax-kernel/intersect.hpp"
-
 typedef Units::UnitDRAMRamulator UnitDRAM;
 typedef Units::UnitCache UnitL2Cache;
 typedef Units::UnitCache UnitL1Cache;
 typedef rtm::FTB PrimBlocks;
-
-#if USE_HEBVH
-typedef Units::TRaX::UnitRTCore<rtm::HECWBVH::Node, PrimBlocks> UnitRTCore;
-#else
-typedef Units::TRaX::UnitRTCore<rtm::NVCWBVH::Node, PrimBlocks> UnitRTCore;
-#endif
+typedef Units::TRaX::UnitRTCore<rtm::CWBVH::Node, PrimBlocks> UnitRTCore;
 
 static TRaXKernelArgs initilize_buffers(uint8_t* main_memory, paddr_t& heap_address, const SimulationConfig& sim_config, uint page_size)
 {
@@ -149,35 +144,31 @@ static TRaXKernelArgs initilize_buffers(uint8_t* main_memory, paddr_t& heap_addr
 	args.camera = sim_config.camera;
 
 	rtm::Mesh mesh(datasets_folder + scene_name + ".obj");
-	rtm::NVCWBVH bvh(mesh, cache_folder + scene_name + ".bvh");
+	rtm::CWBVH bvh(mesh, (cache_folder + scene_name + ".bvh").c_str());
 
 	std::vector<rtm::Ray> rays(args.framebuffer_size);
 	if(args.pregen_rays)
 	{
 		std::string ray_file = scene_name + "-" + std::to_string(args.framebuffer_width) + "-" + std::to_string(pregen_bounce) + ".rays";
-		pregen_rays(bvh.nodes.data(), bvh.ftbs.data(), mesh, args.framebuffer_width, args.framebuffer_height, args.camera, pregen_bounce, rays);
+	#if USE_HECWBVH
+		pregen_rays(&bvh.nodes[0], &bvh.nodes[0].ftb, mesh, args.framebuffer_width, args.framebuffer_height, args.camera, pregen_bounce, rays);
+	#else
+		pregen_rays(&bvh.nodes[0], &bvh.ftbs[0], mesh, args.framebuffer_width, args.framebuffer_height, args.camera, pregen_bounce, rays);
+	#endif
 		args.rays = write_vector(main_memory, 256, rays, heap_address);
 	}
 
-//#if USE_HEBVH
-//	rtm::WBVH wbvh(bvh2, rtm::HECWBVH::WIDTH, bos, &mesh);
-//	mesh.reorder(bos);
-//	rtm::HECWBVH hecwbvh(wbvh, mesh);
-//	args.nodes = write_vector(main_memory, 256, hecwbvh.nodes, heap_address);
-//	args.ft_blocks = (rtm::FTB*)args.nodes;
-//	args.qt_blocks = (rtm::QTB*)args.nodes;
-//#else
-//	//FTB
-//	if(typeid(PrimBlocks) == typeid(rtm::FTB))
-//	{
-//		rtm::WBVH wbvh(bvh2,  bos, &mesh);
-//		mesh.reorder(bos);
-//		rtm::NVCWBVH cwbvh(wbvh, mesh);
-//		args.nodes = write_vector(main_memory, 256, cwbvh.nodes, heap_address);
-//		//args.nodes = write_vector(main_memory, 256, wbvh.nodes, heap_address);
-//		args.ft_blocks = write_vector(main_memory, 256, cwbvh.prims, heap_address);
-//	}
-//#endif
+	args.nodes = write_vector(main_memory, 256, bvh.nodes, heap_address);
+
+#if USE_HECWBVH
+	args.ftbs = (rtm::FTB*)args.nodes;
+#else 
+	args.ftbs = write_vector(main_memory, 256, bvh.ftbs, heap_address);
+#endif
+
+	std::vector<rtm::Triangle> tris;
+	mesh.get_triangles(tris);
+	args.tris = write_vector(main_memory, 256, tris, heap_address);
 
 	std::memcpy(main_memory + TRAX_KERNEL_ARGS_ADDRESS, &args, sizeof(TRaXKernelArgs));
 	return args;

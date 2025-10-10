@@ -189,7 +189,7 @@ public:
 		set_param("max_rays", 128);
 
 		//Workload
-		set_param("scene_name", "sibenik");
+		set_param("scene_name", "intel-sponza");
 		set_param("framebuffer_width", 1024);
 		set_param("framebuffer_height", 1024);
 
@@ -240,6 +240,8 @@ public:
 
 		uint scene_id = get_int("scene_id");
 		camera = rtm::Camera(get_int("framebuffer_width"), get_int("framebuffer_height"), scene_configs[scene_id].focal_length, scene_configs[scene_id].cam_pos, scene_configs[scene_id].cam_target);
+
+		print();
 	}
 
 	int get_int(const std::string& key) const

@@ -83,7 +83,7 @@ private:
 
 		const static uint STACK_SIZE = 128;
 		rtm::RestartTrail restart_trail;
-		StackEntry stack[STACK_SIZE + rtm::WBVH::MAX_WIDTH];
+		StackEntry stack[STACK_SIZE + 31];
 		uint8_t stack_size;
 		uint8_t level;
 		bool update_restart_trail;
