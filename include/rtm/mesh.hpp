@@ -240,6 +240,7 @@ public:
 
 			line_number++;
 		}
+
 		tex_coords.emplace_back(0.0f, 0.0f);
 		for(uint i = 0; i < tex_coord_indices.size(); ++i)
 		{
@@ -260,6 +261,8 @@ public:
 		}
 
 		printf("Mesh: Size: %.1f MiB\n", ((float)sizeof(rtm::vec3) * vertices.size() + (float)sizeof(rtm::uvec3) * vertex_indices.size()) / (1 << 20));
+		printf("Mesh: Triangles: %d\n", vertex_indices.size());
+		printf("Mesh: Vertices: %d\n", vertices.size());
 
 		return true;
 	}

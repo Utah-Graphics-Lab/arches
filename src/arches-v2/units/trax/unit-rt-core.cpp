@@ -31,11 +31,13 @@ void UnitRTCore<NT, PT>::clock_rise()
 	_read_requests();
 	_read_returns();
 
-	for(uint i = 0; i < 1; ++i) //n stack ops per cycle. In reality this would need to be multi banked
+	//n stack ops per cycle. In reality this would need to be multi banked
+	for(uint i = 0; i < 2; ++i)
+	{
 		_schedule_ray();
-
-	_simualte_node_pipline();
-	_simualte_tri_pipline();
+		_simualte_node_pipline();
+		_simualte_tri_pipline();
+	}
 }
 
 template<typename NT, typename PT>
@@ -343,19 +345,31 @@ void UnitRTCore<NT, PT>::_simualte_node_pipline()
 		rtm::BVH::Node nodes[32];
 		uint node_count = rtm::decompress(ray_state.buffer.node, nodes);
 
-		_box_issue_count += 32;
+		_box_issue_count += 8;
 		if(_box_issue_count >= node_count)
 		{
 			uint k = ray_state.restart_trail.get(ray_state.level);
 
-			uint nodes_pushed = 0, last_ptr = ~0u;
+			uint nodes_pushed = 0, last_ptr = ~0u, last_j = ~0u;
 			for(uint i = 0; i < node_count; i++)
 			{
-				if(nodes[i].ptr.raw == last_ptr) continue;
-
 				float t = rtm::intersect(nodes[i].aabb, ray, inv_d);
 				if(t < hit.t)
 				{
+					if(nodes[i].ptr.raw == last_ptr)
+					{
+						if(ray_state.stack[last_j].t <= t)
+							continue;
+
+						ray_state.stack[last_j].t = t;
+						for(uint j = last_j; j < ray_state.stack_size + nodes_pushed - 1; ++j)
+						{
+							if(ray_state.stack[j + 1].t <= ray_state.stack[j].t) break;
+							std::swap(ray_state.stack[j], ray_state.stack[j + 1]);
+						}
+						continue;
+					}
+
 					uint j = ray_state.stack_size + nodes_pushed++;
 					for(; j > ray_state.stack_size; --j)
 					{
@@ -367,6 +381,7 @@ void UnitRTCore<NT, PT>::_simualte_node_pipline()
 					ray_state.stack[j].is_last = false;
 					ray_state.stack[j].data = nodes[i].ptr;
 					last_ptr = nodes[i].ptr.raw;
+					last_j = j;
 				}
 			}
 
@@ -427,7 +442,7 @@ void UnitRTCore<NT, PT>::_simualte_tri_pipline()
 		rtm::IntersectionTriangle tris[rtm::FTB::MAX_TRIS];
 		uint tri_count = rtm::decompress(buffer.prim, tris);
 
-		_tri_issue_count += tri_count;
+		_tri_issue_count += 1;
 		if(_tri_issue_count >= tri_count)
 		{
 			rtm::Ray& ray = ray_state.ray;
@@ -441,6 +456,8 @@ void UnitRTCore<NT, PT>::_simualte_tri_pipline()
 			_tri_pipline.write(ray_id);
 			_tri_isect_queue.pop();
 			_tri_issue_count = 0;
+			log.strips++;
+			log.tris += tri_count;
 		}
 		else
 		{
@@ -457,10 +474,8 @@ void UnitRTCore<NT, PT>::_simualte_tri_pipline()
 		{
 			_ray_states[ray_id].phase = RayState::Phase::SCHEDULER;
 			_ray_scheduling_queue.push(ray_id);
-			log.strips++;
 		}
 
-		log.tris++;
 	}
 }
 
@@ -507,7 +522,7 @@ void UnitRTCore<NT, PT>::_issue_returns()
 	}
 }
 
-template class UnitRTCore<rtm::NVCWBVH::Node, rtm::FTB>;
+template class UnitRTCore<rtm::HE2CWBVH::Node, rtm::FTB>;
 template class UnitRTCore<rtm::HECWBVH::Node, rtm::FTB>;
 
 }}}

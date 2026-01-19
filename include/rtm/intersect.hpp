@@ -27,7 +27,7 @@ inline float intersect(const AABB& aabb, const rtm::Ray& ray, const rtm::vec3& i
 
 inline bool intersect(const rtm::Triangle& tri, const rtm::Ray& ray, rtm::Hit& hit)
 {
-#if 1
+#if 0
 	rtm::vec3 bc;
 	bc[0] = rtm::dot(rtm::cross(tri.vrts[2] - tri.vrts[1], tri.vrts[1] - ray.o), ray.d);
 	bc[1] = rtm::dot(rtm::cross(tri.vrts[0] - tri.vrts[2], tri.vrts[2] - ray.o), ray.d);

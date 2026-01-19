@@ -81,7 +81,7 @@ private:
 		rtm::vec3 inv_d;
 		rtm::Hit hit;
 
-		const static uint STACK_SIZE = 128;
+		const static uint STACK_SIZE = 32;
 		rtm::RestartTrail restart_trail;
 		StackEntry stack[STACK_SIZE + 31];
 		uint8_t stack_size;

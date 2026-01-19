@@ -4,17 +4,17 @@
 
 namespace rtm {
 
-//fp32 triangle block with compressed vertex/index/primID
-struct alignas(128) FTB
+//fp32 triangle block
+struct alignas(64) FTB
 {
 	const static uint BLOCK_SIZE = 128;
-	const static uint MAX_TRIS = 16;
-	const static uint MAX_VRTS = 16;
+	const static uint MAX_TRIS = 8;
+	const static uint MAX_VRTS = 9;
 
 	uint32_t is_int   : 1;
 	uint32_t prim_idx : 31;
-	uint32_t vrt_cnt : 4;
-	uint32_t tri_cnt : 4;
+	uint32_t vrt_cnt : 5;
+	uint32_t tri_cnt : 5;
 	uint32_t nx : 5;
 	uint32_t ny : 5;
 	uint32_t nz : 5;
@@ -25,42 +25,47 @@ struct alignas(128) FTB
 static_assert(sizeof(FTB) == FTB::BLOCK_SIZE);
 
 #ifndef __riscv
-inline bool compress(uint prim_idx, uint prim_cnt, const Mesh& mesh, FTB& block)
+inline bool compress(uint prim_idx, uint prim_cnt, const Mesh& mesh, FTB* block = nullptr)
 {
 	if(prim_cnt > FTB::MAX_TRIS) return false;
+	if(prim_cnt <= 1 && !block) return true;
 
 	uvec3 index_buffer[FTB::MAX_TRIS];
 	for(uint i = 0; i < prim_cnt; ++i)
 		index_buffer[i] = mesh.vertex_indices[prim_idx + i];
 
-	uint num_vrts = 0;
 	rtm::vec3 vertex_buffer[FTB::MAX_VRTS];
-	std::map<uint, uint> vertex_map;
+	uint num_vrts = 0, mask_x = 0, mask_y = 0, mask_z = 0;
 	for(uint i = 0; i < prim_cnt; ++i)
 	{
 		for(uint j = 0; j < 3; ++j)
 		{
 			uint vertex_index = index_buffer[i][j];
-			if(!vertex_map.contains(vertex_index))
+			rtm::vec3 vertex = mesh.vertices[vertex_index];
+
+			uint k;
+			for(k = 0; k < num_vrts; ++k)
+				if(vertex_buffer[k].x == vertex.x &&
+				   vertex_buffer[k].y == vertex.y &&
+				   vertex_buffer[k].z == vertex.z)
+					break;
+
+			if(k == num_vrts)
 			{
-				if(num_vrts >= FTB::MAX_VRTS) return false;
-				vertex_map[vertex_index] = num_vrts;
-				vertex_buffer[num_vrts] = mesh.vertices[vertex_index];
 				num_vrts++;
+				if(num_vrts > FTB::MAX_VRTS) return false;
+
+				vertex_buffer[k] = vertex;
+				mask_x |= as_u32(vertex_buffer[k].x) ^ as_u32(vertex_buffer[0].x);
+				mask_y |= as_u32(vertex_buffer[k].y) ^ as_u32(vertex_buffer[0].y);
+				mask_z |= as_u32(vertex_buffer[k].z) ^ as_u32(vertex_buffer[0].z);
 			}
-			index_buffer[i][j] = vertex_map[vertex_index];
+
+			index_buffer[i][j] = k;
 		}
 	}
 
-	uint mask_x = 0, mask_y = 0, mask_z = 0;
-	for(uint i = 1; i < num_vrts; ++i)
-	{
-		mask_x |= as_u32(vertex_buffer[i].x) ^ as_u32(vertex_buffer[0].x);
-		mask_y |= as_u32(vertex_buffer[i].y) ^ as_u32(vertex_buffer[0].y);
-		mask_z |= as_u32(vertex_buffer[i].z) ^ as_u32(vertex_buffer[0].z);
-	}
-
-	uint max_pfx = 31;
+	uint max_pfx = 0;
 	uint px = min(_lzcnt_u32(mask_x), max_pfx);
 	uint py = min(_lzcnt_u32(mask_y), max_pfx);
 	uint pz = min(_lzcnt_u32(mask_z), max_pfx);
@@ -72,32 +77,33 @@ inline bool compress(uint prim_idx, uint prim_cnt, const Mesh& mesh, FTB& block)
 	uint ib_size = ni * 3 * prim_cnt;
 	uint vb_size = (nx + ny + nz) * num_vrts + px + py + pz;
 	if(ib_size + vb_size > FTB::DATA_SECTOR_SIZE * 8) return false;
+	if(!block) return true;
 
 	uint block_ptr = 0;
 	for(uint i = 0; i < prim_cnt; ++i)
 	{
-		block.data.write(block_ptr, ni, index_buffer[i][0]); block_ptr += ni;
-		block.data.write(block_ptr, ni, index_buffer[i][1]); block_ptr += ni;
-		block.data.write(block_ptr, ni, index_buffer[i][2]); block_ptr += ni;
+		block->data.write(block_ptr, ni, index_buffer[i][0]); block_ptr += ni;
+		block->data.write(block_ptr, ni, index_buffer[i][1]); block_ptr += ni;
+		block->data.write(block_ptr, ni, index_buffer[i][2]); block_ptr += ni;
 	}
 
-	block.data.write(block_ptr, px, as_u32(vertex_buffer[0].x) >> nx); block_ptr += px;
-	block.data.write(block_ptr, py, as_u32(vertex_buffer[0].y) >> ny); block_ptr += py;
-	block.data.write(block_ptr, pz, as_u32(vertex_buffer[0].z) >> nz); block_ptr += pz;
+	block->data.write(block_ptr, px, as_u32(vertex_buffer[0].x) >> nx); block_ptr += px;
+	block->data.write(block_ptr, py, as_u32(vertex_buffer[0].y) >> ny); block_ptr += py;
+	block->data.write(block_ptr, pz, as_u32(vertex_buffer[0].z) >> nz); block_ptr += pz;
 
 	for(uint i = 0; i < num_vrts; ++i)
 	{
-		block.data.write(block_ptr, nx, as_u32(vertex_buffer[i].x)); block_ptr += nx;
-		block.data.write(block_ptr, ny, as_u32(vertex_buffer[i].y)); block_ptr += ny;
-		block.data.write(block_ptr, nz, as_u32(vertex_buffer[i].z)); block_ptr += nz;
+		block->data.write(block_ptr, nx, as_u32(vertex_buffer[i].x)); block_ptr += nx;
+		block->data.write(block_ptr, ny, as_u32(vertex_buffer[i].y)); block_ptr += ny;
+		block->data.write(block_ptr, nz, as_u32(vertex_buffer[i].z)); block_ptr += nz;
 	}
 
-	block.prim_idx = prim_idx;
-	block.tri_cnt = prim_cnt - 1;
-	block.vrt_cnt = num_vrts - 1;
-	block.nx = nx - 1;
-	block.ny = ny - 1;
-	block.nz = nz - 1;
+	block->prim_idx = prim_idx;
+	block->tri_cnt = prim_cnt - 1;
+	block->vrt_cnt = num_vrts - 1;
+	block->nx = nx - 1;
+	block->ny = ny - 1;
+	block->nz = nz - 1;
 
 	return true;
 }

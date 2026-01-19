@@ -41,7 +41,6 @@ public:
 	{
 		LBVH,
 		//HPLOC, //TODO
-		//PRBVH, //TODO
 		//SBVH,  //TODO
 		SAH_32BIN,
 		SAH,
@@ -55,21 +54,29 @@ public:
 
 	enum LeafCost
 	{
-		CONSTANT,
 		LINEAR,
-		FTB,
+		CONSTANT,
 	};
+
+	enum MaxPrims : uint8_t
+	{
+		PAIR = 0x20 + 2,
+		FTB = 0x40 + FTB::MAX_TRIS,
+	};
+
 
 	struct BuildArgs
 	{
 		const char* cache_path{""};
 		uint8_t width{2};
-		uint8_t max_prims{1};
+		uint8_t max_prims_collapse{1};
+		uint8_t max_prims_merge{1};
 		uint8_t build_method{SAH};
 		uint8_t collapse_method{DYNAMIC};
 		uint8_t leaf_cost{CONSTANT};
 		bool merge_nodes{false};
 		bool merge_leafs{false};
+		bool silent{false};
 	};
 
 	struct alignas(32) Node
@@ -82,6 +89,11 @@ public:
 	BuildArgs args{};
 	float sah_cost{0.0f};
 	std::vector<Node> nodes;
+
+	float node_collapse_time{0.0};
+	float leaf_collapse_time{0.0};
+	float leaf_merge_time{0.0};
+	float node_merge_time{0.0};
 
 private:
 	struct BuildObject
@@ -108,6 +120,7 @@ private:
 	};
 
 	const Mesh* _mesh{nullptr}; //used only for FTB leaf cost 
+	uint8_t _max_prims{1};
 
 public:
 	BVH() = default;
@@ -120,14 +133,14 @@ public:
 		bool build = true;
 		if(args.cache_path != "")
 		{
-			printf("BVH2: Loading: %s\n", args.cache_path);
+			if(!args.silent) printf("BVH2: Loading: %s\n", args.cache_path);
 			build = !_deserialize(args.cache_path, bld_objs);
 		}
 
 		if(build)
 		{
-			printf("BVH2: Failed to load: %s\n", args.cache_path);
-			printf("BVH2: Building\n");
+			if(!args.silent) printf("BVH2: Failed to load: %s\n", args.cache_path);
+			if(!args.silent) printf("BVH2: Building\n");
 
 			_get_build_objs(mesh, bld_objs);
 			_build(bld_objs);
@@ -135,29 +148,69 @@ public:
 				_serialize(args.cache_path, bld_objs);
 		}
 
-		sah_cost = _compute_cost(bld_objs);
 		_reorder(mesh, bld_objs);
+		_mesh = &mesh; //gross
+
+		sah_cost = _compute_cost(bld_objs);
+		if(!args.silent) _print_stats_bvh2();
+
+		uint total_time = 0;
+
+		if(args.max_prims_collapse > 1 && args.collapse_method == GREEDY)
+		{
+			_max_prims = args.max_prims_collapse;
+			if(!args.silent) printf("BVH%d: Collapsing Leafs: ", args.width);
+			auto start = std::chrono::high_resolution_clock::now();
+			_collapse_leafs(bld_objs);
+
+			auto time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+			if(!args.silent) printf("%dms\n", (uint)time.count());
+			total_time += time.count();
+			leaf_collapse_time = time.count();
+		}
 
 		if(args.width > 2)
 		{
-			_mesh = &mesh; //gross
-			printf("BVH2: Collapsing\n");
-			_collapse(bld_objs);
+			_max_prims = args.max_prims_collapse;
+			if(!args.silent) printf("BVH%d: Collapsing Nodes: ", args.width);
+			auto start = std::chrono::high_resolution_clock::now();
+			_collapse_nodes(bld_objs);
+
+			auto time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+			if(!args.silent) printf("%dms\n", (uint)time.count());
+			total_time += time.count();
+			node_collapse_time = time.count();
 		}
 
 		if(args.merge_nodes)
 		{
-			printf("BVH%d: Merging Nodes\n", args.width);
+			if(!args.silent) printf("BVH%d: Merging Nodes: ", args.width);
+			auto start = std::chrono::high_resolution_clock::now();
 			_merge_nodes();
+
+			auto time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+			if(!args.silent) printf("%dms\n", (uint)time.count());
+			total_time += time.count();
+			node_merge_time = time.count();
 		}
 
 		if(args.merge_leafs)
 		{
-			printf("BVH%d: Merging Leafs\n", args.width);
+			_max_prims = args.max_prims_merge;
+			if(!args.silent) printf("BVH%d: Merging Leafs: ", args.width);
+			auto start = std::chrono::high_resolution_clock::now();
 			_merge_leafs(bld_objs);
+
+			auto time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+			if(!args.silent) printf("%dms\n", (uint)time.count());
+			total_time += time.count();
+			leaf_merge_time = time.count();
 		}
 
-		_print_stats();
+		if(!args.silent) printf("BVH%d: Total Time: %dms\n", args.width, total_time);
+
+		sah_cost = _compute_cost(bld_objs);
+		if(!args.silent) _print_stats_wbvh();
 	}
 
 private:
@@ -438,20 +491,31 @@ private:
 	float _cost_leaf(const std::vector<BuildObject>& bld_objs, uint prim_id0, uint prim_cnt)
 	{
 		float cost_leaf = INFINITY;
-		if(prim_cnt <= args.max_prims)
+		if(prim_cnt <= (_max_prims & 0x1f))
 		{
-			if(args.leaf_cost == CONSTANT)  cost_leaf = 1.0f;
-			else if(args.leaf_cost == LINEAR)
+			if(_max_prims == PAIR)
+			{
+				std::set<uint> unique_vrts;
+				for(uint i = 0; i < prim_cnt; ++i)
+					for(uint j = 0; j < prim_cnt; ++j)
+						unique_vrts.insert(_mesh->vertex_indices[i][j]);
+				if(unique_vrts.size() > 4) return cost_leaf;
+			}
+			else if(_max_prims == FTB)
+			{
+				if(!compress(prim_id0, prim_cnt, *_mesh))
+					return cost_leaf;
+			}
+
+			if(args.leaf_cost == LINEAR)
 			{
 				cost_leaf = 0.0f;
 				for(uint i = 0; i < prim_cnt; ++i)
 					cost_leaf += bld_objs[prim_id0 + i].cost;
 			}
-			else if(args.leaf_cost == FTB)
+			else
 			{
-				rtm::FTB temp;
-				if(compress(prim_id0, prim_cnt, *_mesh, temp))
-					cost_leaf = 1.0f;
+				cost_leaf = args.leaf_cost;
 			}
 		}
 		return cost_leaf;
@@ -467,16 +531,15 @@ private:
 			Node* child = &nodes[node.ptr.child_idx];
 			if(child[0].ptr.is_int || child[1].ptr.is_int) continue;
 
-			float cost_internal = node.aabb.surface_area() +
-				child[0].aabb.surface_area() * _cost_leaf(bld_objs, child[0].ptr.child_idx, child[0].ptr.prim_cnt) +
-				child[1].aabb.surface_area() * _cost_leaf(bld_objs, child[1].ptr.child_idx, child[1].ptr.prim_cnt);
-
-			uint prim_cnt = child[0].ptr.prim_cnt + child[1].ptr.prim_cnt;
 			uint prim_idx = child[0].ptr.prim_idx;
+			uint prim_cnt = child[0].ptr.prim_cnt + child[1].ptr.prim_cnt;
 			if(prim_cnt > FTB::MAX_TRIS) continue;
 
-			float cost_leaf = node.aabb.surface_area() * _cost_leaf(bld_objs, prim_idx, prim_cnt);
-			if(cost_leaf < cost_internal)
+			//float cost_leaf = node.aabb.surface_area() * _cost_leaf(bld_objs, prim_idx, prim_cnt);
+			if(_cost_leaf(bld_objs, prim_idx, prim_cnt) == INFINITY) continue;
+
+			//float cost_internal = child[0].aabb.surface_area() + child[1].aabb.surface_area();
+			//if(cost_leaf <= cost_internal)
 			{
 				node.ptr.is_int = 0;
 				node.ptr.prim_idx = child[0].ptr.prim_idx;
@@ -487,11 +550,10 @@ private:
 		}
 	}
 
-	void _collapse(const std::vector<BuildObject>& bld_objs)
+	void _collapse_nodes(const std::vector<BuildObject>& bld_objs)
 	{
 		if(args.collapse_method == GREEDY)
 		{
-			_collapse_leafs(bld_objs);
 			_collapse_greedy();
 		}
 		else if(args.collapse_method == DYNAMIC)
@@ -552,19 +614,8 @@ private:
 			wnode.ptr.child_cnt = node_set.size();
 			for(uint i = 0; i < node_set.size(); ++i)
 			{
-				if(nodes[node_set[i]].ptr.is_int)
-				{
-					event_queue.emplace_back(node_set[i], wnodes.size());
-					wnodes.emplace_back();
-				}
-			}
-			for(uint i = 0; i < node_set.size(); ++i)
-			{
-				if(!nodes[node_set[i]].ptr.is_int)
-				{
-					event_queue.emplace_back(node_set[i], wnodes.size());
-					wnodes.emplace_back();
-				}
+				event_queue.emplace_back(node_set[i], wnodes.size());
+				wnodes.emplace_back();
 			}
 		}
 
@@ -618,6 +669,7 @@ private:
 
 			//Leaf cost
 			cache.decisions[1].cost = _cost_leaf(bld_objs, cache.prim_idx, cache.prim_cnt) * node.aabb.surface_area();
+			if(cache.decisions[1].cost != cache.decisions[1].cost) cache.decisions[1].cost = INFINITY;
 			cache.decisions[1].type = LEAF;
 
 			if(node.ptr.is_int)
@@ -720,23 +772,11 @@ private:
 
 				wnode.ptr.child_idx = wnodes.size();
 				wnode.ptr.child_cnt = node_set.size();
-				//map interior children
+				//map children
 				for(uint i = 0; i < node_set.size(); ++i)
 				{
-					if(caches[node_set[i].n].decisions[node_set[i].i].type == INTERNAL)
-					{
-						event_queue.emplace_back(node_set[i], wnodes.size());
-						wnodes.emplace_back();
-					}
-				}
-				//then leaf children
-				for(uint i = 0; i < node_set.size(); ++i)
-				{
-					if(caches[node_set[i].n].decisions[node_set[i].i].type == LEAF)
-					{
-						event_queue.emplace_back(node_set[i], wnodes.size());
-						wnodes.emplace_back();
-					}
+					event_queue.emplace_back(node_set[i], wnodes.size());
+					wnodes.emplace_back();
 				}
 			}
 			else if(d.type == LEAF)
@@ -749,20 +789,6 @@ private:
 		}
 
 		nodes = wnodes;
-	}
-
-	void _merge_nodes()
-	{
-		for(uint i = 0; i < nodes.size(); ++i)
-		{
-			BVH::Node& node = nodes[i];
-			if(!node.ptr.is_int) continue;
-
-			uint target = 0;
-			for(uint source = 1; source < node.ptr.child_cnt; ++source)
-				if(!_try_merge_nodes(node, target, source))
-					target = source;
-		}
 	}
 
 	bool _try_merge_nodes(BVH::Node& node, uint target_child, uint source_child)
@@ -785,6 +811,20 @@ private:
 		return true;
 	}
 
+	void _merge_nodes()
+	{
+		for(uint i = 0; i < nodes.size(); ++i)
+		{
+			BVH::Node& node = nodes[i];
+			if(!node.ptr.is_int) continue;
+
+			uint target = 0;
+			for(uint source = 1; source < node.ptr.child_cnt; ++source)
+				if(!_try_merge_nodes(node, target, source))
+					target = source;
+		}
+	}
+
 	bool _try_merge_leafs(const std::vector<BuildObject>& bld_objs, BVH::Node& node, uint target_child, uint source_child)
 	{
 		if(!node.ptr.is_int) return false;
@@ -796,7 +836,7 @@ private:
 
 		uint prim_cnt = target.ptr.prim_cnt + source.ptr.prim_cnt;
 		if(_cost_leaf(bld_objs, target.ptr.prim_idx, prim_cnt) == INFINITY) return false;
-
+		
 		//apply the merge
 		target.ptr.prim_cnt = prim_cnt;
 		for(uint i = target_child; i <= source_child; ++i)
@@ -807,10 +847,12 @@ private:
 
 	void _merge_leafs(const std::vector<BuildObject>& bld_objs)
 	{
+		uint last_ptr = ~0;
 		for(uint i = 0; i < nodes.size(); ++i)
 		{
 			BVH::Node& node = nodes[i];
-			if(!node.ptr.is_int) continue;
+			if(!node.ptr.is_int || node.ptr.raw == last_ptr) continue;
+			last_ptr = node.ptr.raw;
 
 			uint target = 0;
 			for(uint source = 1; source < node.ptr.child_cnt; ++source)
@@ -836,36 +878,50 @@ private:
 				float c_prim = 0.0f;
 				for(uint j = 0; j < node.ptr.prim_cnt; ++j)
 					c_prim += bld_objs[node.ptr.prim_idx + j].cost;
-				cost += A * c_prim;
+				cost += A;
 			}
 		}
 		return cost;
 	}
 
-	void _print_stats() const
+	void _print_stats_bvh2() const
 	{
-		const char* build_method = "NA";
+		std::string build_method = "NA";
 		if(args.build_method == LBVH) build_method = "LBVH";
 		if(args.build_method == SAH_32BIN) build_method = "SAH_32BIN";
 		if(args.build_method == SAH) build_method = "SAH";
 
-		const char* collapse_method = "NA";
+		printf("BVH2: Size: %0.1f MiB\n", (float)sizeof(Node) * nodes.size() / (1 << 20));
+		printf("BVH2: SAH Cost: %.2f\n", sah_cost);
+		printf("BVH2: Build Type: %s\n", build_method.c_str());
+	}
+
+	void _print_stats_wbvh() const
+	{
+		std::string collapse_method = "NA";
 		if(args.collapse_method == DYNAMIC)  collapse_method = "DYNAMIC";
 		if(args.collapse_method == GREEDY) collapse_method = "GREEDY";
 
-		const char* leaf_cost = "NA";
-		if(args.leaf_cost == CONSTANT) leaf_cost = "CONSTANT";
+		std::string leaf_cost = "NA";
 		if(args.leaf_cost == LINEAR)  leaf_cost = "LINEAR";
-		if(args.leaf_cost == FTB)  leaf_cost = "FTB";
+		else                          leaf_cost = std::to_string(args.leaf_cost).c_str();
 
-		printf("BVH%d: Size:      %0.1f MiB\n", args.width, (float)sizeof(Node) * nodes.size() / (1 << 20));
-		printf("BVH%d: SAH Cost:  %.2f\n", args.width, sah_cost);
-		printf("BVH%d: Max Prims: %d\n", args.width, args.max_prims);
-		printf("BVH%d: Build:     %s\n", args.width, build_method);
-		printf("BVH%d: Collapse:  %s\n", args.width, collapse_method);
-		printf("BVH%d: Leaf Cost: %s\n", args.width, leaf_cost);
+		std::string max_prims_collapse = std::to_string((uint)args.max_prims_collapse).c_str();
+		if(args.max_prims_collapse == PAIR) max_prims_collapse = "PAIR";
+		if(args.max_prims_collapse == FTB)  max_prims_collapse = "FTB";
+
+		std::string max_prims_merge = std::to_string((uint)args.max_prims_merge).c_str();
+		if(args.max_prims_merge == PAIR) max_prims_merge = "PAIR";
+		if(args.max_prims_merge == FTB)  max_prims_merge = "FTB";
+
+		printf("BVH%d: Size: %0.1f MiB\n", args.width, (float)sizeof(Node) * nodes.size() / (1 << 20));
+		printf("BVH%d: SAH Cost: %.2f\n", args.width, sah_cost);
+		printf("BVH%d: Leaf Cost: %s\n", args.width, leaf_cost.c_str());
+		printf("BVH%d: Collapse: %s\n", args.width, collapse_method.c_str());
+		printf("BVH%d: Max Clps: %s\n", args.width, max_prims_collapse.c_str());
 		printf("BVH%d: Node Merg: %d\n", args.width, args.merge_nodes);
 		printf("BVH%d: Leaf Merg: %d\n", args.width, args.merge_leafs);
+		printf("BVH%d: Max Merg: %s\n", args.width, max_prims_merge.c_str());
 
 		uint node_histo[32];
 		for(uint i = 0; i < 32; ++i) node_histo[i] = 0;
@@ -900,7 +956,7 @@ private:
 		}
 
 		printf("BVH%d: Leaf Fullness: %.2f\n", args.width, (float)total_prims / total_leaf);
-		for(uint i = 1; i <= args.max_prims; ++i)
+		for(uint i = 1; i <= (_max_prims & 0x1f); ++i)
 		{
 			float precent = 100.0f * leaf_histo[i] / total_leaf;
 			printf("%02d: %5.1f%% %.*s\n", i, precent, (uint)std::round(precent),

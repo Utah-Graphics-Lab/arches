@@ -128,27 +128,27 @@ typedef Units::TRaX::UnitRTCore<rtm::CWBVH::Node, PrimBlocks> UnitRTCore;
 
 static TRaXKernelArgs initilize_buffers(uint8_t* main_memory, paddr_t& heap_address, const SimulationConfig& sim_config, uint page_size)
 {
-	std::string scene_name = sim_config.get_string("scene_name");
+	std::string scene_name = sim_config.get_string("scene-name");
 	std::string project_folder = get_project_folder_path();
 	std::string datasets_folder = project_folder + "datasets\\";
 	std::string cache_folder = project_folder + "datasets\\cache\\";
 
 	TRaXKernelArgs args;
-	args.framebuffer_width = sim_config.get_int("framebuffer_width");
-	args.framebuffer_height = sim_config.get_int("framebuffer_height");
+	args.framebuffer_width = sim_config.get_int("framebuffer-width");
+	args.framebuffer_height = sim_config.get_int("framebuffer-height");
 	args.framebuffer_size = args.framebuffer_width * args.framebuffer_height;
 	heap_address = align_to(page_size, heap_address);
 	args.framebuffer = reinterpret_cast<uint32_t*>(heap_address);
 	heap_address += args.framebuffer_size * sizeof(uint32_t);
 
-	args.pregen_rays = sim_config.get_int("pregen_rays");
-	uint pregen_bounce = sim_config.get_int("pregen_bounce");
+	args.pregen_rays = sim_config.get_int("pregen-rays");
+	uint pregen_bounce = sim_config.get_int("pregen-bounce");
 
 	args.light_dir = rtm::normalize(rtm::vec3(4.5f, 42.5f, 5.0f));
 	args.camera = sim_config.camera;
 
 	rtm::Mesh mesh(datasets_folder + scene_name + ".obj");
-	rtm::CWBVH bvh(mesh, (cache_folder + scene_name + ".bvh").c_str());
+	rtm::CWBVH bvh(mesh, (cache_folder + scene_name + ".bvh").c_str(), sim_config.get_int("bvh-preset"), sim_config.get_int("bvh-merging"));
 
 	std::vector<rtm::Ray> rays(args.framebuffer_size);
 	if(args.pregen_rays)
@@ -172,7 +172,7 @@ static TRaXKernelArgs initilize_buffers(uint8_t* main_memory, paddr_t& heap_addr
 
 	std::vector<rtm::Triangle> tris;
 	mesh.get_triangles(tris);
-	args.tris = write_vector(main_memory, 256, tris, heap_address);
+	//args.tris = write_vector(main_memory, 256, tris, heap_address);
 
 	std::memcpy(main_memory + TRAX_KERNEL_ARGS_ADDRESS, &args, sizeof(TRaXKernelArgs));
 	return args;
@@ -206,7 +206,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	//L2$
 	UnitL2Cache::Configuration l2_config;
 	l2_config.level = 2;
-	//l2_config.block_prefetch = true;
+	l2_config.block_prefetch = true;
 	l2_config.miss_alloc = true;
 	l2_config.size = 6 << 20;
 	l2_config.associativity = 16;
@@ -232,7 +232,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	l1d_config.size = 128 << 10;
 	l1d_config.associativity = 32;
 	l1d_config.policy = Units::UnitCacheBase::Policy::LRU;
-	l1d_config.num_banks = 4;
+	l1d_config.num_banks = 8;
 	l1d_config.crossbar_width = l1d_config.num_banks;
 	l1d_config.num_mshr = 512;
 	l1d_config.num_subentries = 16;
@@ -241,7 +241,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	UnitL1Cache::PowerConfig l1d_power_config;
 
 	UnitRTCore::Configuration rtc_config;
-	rtc_config.max_rays = 32;
+	rtc_config.max_rays = 64;
 	rtc_config.num_cache_ports = 4;
 
 #elif 0 //RTX 3070 ish
@@ -370,7 +370,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	UnitRTCore::Configuration rtc_config;
 	rtc_config.max_rays = 64;
-	rtc_config.num_cache_ports = 2;
+	rtc_config.num_cache_ports = 4;
 #else //TRaX 1.0
 	double core_clock = 1000.0e6;
 	uint num_threads = 1;
@@ -470,7 +470,10 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	simulator.register_unit(&xbar);
 	simulator.new_unit_group();
 
-	uint8_t* device_mem = (uint8_t*)malloc(3 << 29);
+	std::vector<uint8_t> vec_mem;
+	vec_mem.resize(1792 << 20);
+
+	uint8_t* device_mem = vec_mem.data();
 	paddr_t heap_address = elf.load(device_mem);
 	TRaXKernelArgs kernel_args = initilize_buffers(device_mem, heap_address, sim_config, partition_stride);
 	heap_address = align_to(partition_stride, heap_address);
@@ -602,7 +605,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	UnitRTCore::Log rtc_log;
 
-	uint delta = sim_config.get_int("logging_interval");
+	uint delta = sim_config.get_int("logging-interval");
 	float delta_s = delta / core_clock;
 	float delta_ns = delta_s * 1e9;
 	float delta_dram_cycles = delta_s * dram_clock;
@@ -720,7 +723,6 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	stbi_flip_vertically_on_write(true);
 	stbi_write_png("out.png", (int)kernel_args.framebuffer_width, (int)kernel_args.framebuffer_height, 4, device_mem + (size_t)kernel_args.framebuffer, 0);
-	free(device_mem);
 
 	for(auto& tp : tps) delete tp;
 	for(auto& sfu : sfus) delete sfu;
