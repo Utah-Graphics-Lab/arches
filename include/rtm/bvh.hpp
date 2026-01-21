@@ -870,15 +870,19 @@ private:
 			float A = node.aabb.surface_area() / root_surface_area;
 			if(node.ptr.is_int)
 			{
-				float c_node = 1.0f;
+				float c_node = 64.0f;
 				cost += A * c_node;
 			}
 			else
 			{
+			#if 0
 				float c_prim = 0.0f;
 				for(uint j = 0; j < node.ptr.prim_cnt; ++j)
 					c_prim += bld_objs[node.ptr.prim_idx + j].cost;
-				cost += A;
+			#else
+				float c_prim = 64.0f;
+			#endif
+				cost += A * c_prim;
 			}
 		}
 		return cost;

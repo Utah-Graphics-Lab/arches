@@ -17,6 +17,8 @@ inline static uint32_t encode_pixel(rtm::vec3 in)
 
 inline rtm::vec3 palette(float t)
 {
+	t = rtm::clamp(t, 0.0, 1.0f);
+
 	const rtm::vec3 k[] = {
 		rtm::vec3( 000.13572138f, 000.09140261f, 000.10667330f),
 		rtm::vec3( 004.61539260f, 002.19418839f, 012.64194608f),
@@ -26,7 +28,6 @@ inline rtm::vec3 palette(float t)
 		rtm::vec3( 059.28637943f, 002.82956604f, 027.34824973f)
 	};
 	
-	t = rtm::clamp(log(t) / log(256.0f));
 	float t_pow = t;
 	rtm::vec3 color(k[1] * t + k[0]);
 	for(uint i = 2; i < 6; ++i)
@@ -45,6 +46,7 @@ static std::atomic_uint prim_steps = 0;
 
 inline static void kernel(const TRaXKernelArgs& args)
 {
+	constexpr uint32_t SPP = 16;
 	constexpr uint TILE_X = 4;
 	constexpr uint TILE_Y = 8;
 	constexpr uint TILE_SIZE = TILE_X * TILE_Y;
@@ -61,30 +63,41 @@ inline static void kernel(const TRaXKernelArgs& args)
 		uint fb_index = y * args.framebuffer_width + x;
 		
 		rtm::RNG rng(fb_index);
-		rtm::Ray ray = args.pregen_rays ? args.rays[fb_index] : args.camera.generate_ray_through_pixel(x, y);
-		rtm::Hit hit(ray.t_max, rtm::vec2(0.0f), ~0u);
-
 		IntersectStats stats;
-		#if defined(__riscv) && (TRAX_USE_RT_CORE)
-			_traceray<0x0u>(index, ray, hit);
-		#else
-			intersect(args.nodes, args.ftbs, ray, hit, stats);
-		#endif
 
-		if(hit.t < ray.t_max)
+		float radiance = 0.0f;
+		for(uint32_t i = 0; i < SPP; ++i)
 		{
-			rtm::vec3 n = args.tris[hit.id].normal();
-			uint hash = rtm::RNG::hash(hit.id) | 0xff'00'00'00;
+			float throughput = 1.0f;
+			rtm::Ray ray = args.pregen_rays ? args.rays[fb_index] : args.camera.generate_ray_through_pixel(x, y);
+			for(uint32_t j = 0; j < 3; ++j)
+			{
+				rtm::Hit hit(ray.t_max, rtm::vec2(0.0f), ~0u);
+			#if defined(__riscv) && (TRAX_USE_RT_CORE)
+				_traceray<0x0u>(index, ray, hit);
+			#else
+				intersect(args.nodes, args.ftbs, ray, hit, stats);
+			#endif
 
-			//args.framebuffer[fb_index] = hash;
-			args.framebuffer[fb_index] = encode_pixel(n * 0.5f + 0.5f);
-		}
-		else
-		{
-			args.framebuffer[fb_index] = 0xff000000;
+				if(hit.t >= ray.t_max)
+				{
+					radiance += throughput * 16.0f;
+					break;
+				}
+
+				rtm::vec3 n = args.tris[hit.id].normal();
+				uint hash = rtm::RNG::hash(hit.id) | 0xff'00'00'00;
+
+				ray.o += ray.d * hit.t;
+				ray.d = cosine_sample_hemisphere(n, rng); // generate secondray rays
+				throughput *= 0.8f;
+			}
 		}
 
-		//args.framebuffer[fb_index] = encode_pixel(palette(stats.total_steps() / 32.0f));
+		uint32_t bytes = (stats.node_steps * sizeof(rtm::CWBVH::Node) + stats.prim_steps * sizeof(rtm::FTB)) / SPP;
+		//args.framebuffer[fb_index] = bytes;
+
+		args.framebuffer[fb_index] = encode_pixel(radiance / SPP);
 	#ifndef __riscv
 		node_steps += stats.node_steps;
 		prim_steps += stats.prim_steps;
@@ -147,12 +160,13 @@ int main(int argc, char* argv[])
 	std::string scene_name = argv[1];
 
 	TRaXKernelArgs args;
-	args.framebuffer_width = 1024;
-	args.framebuffer_height = 1024;
+	args.framebuffer_width = 1920;
+	args.framebuffer_height = 1080;
 	args.framebuffer_size = args.framebuffer_width * args.framebuffer_height;
-	args.framebuffer = new uint32_t[args.framebuffer_size];
+	std::vector<uint32_t> fb_vec(args.framebuffer_size);
+	args.framebuffer = fb_vec.data();
 
-	args.pregen_rays = true;
+	args.pregen_rays = false;
 	SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
 
 	args.light_dir = rtm::normalize(rtm::vec3(4.5f, 42.5f, 5.0f));
@@ -175,18 +189,22 @@ int main(int argc, char* argv[])
 	rtm::Mesh mesh(mesh_path);
 
 #if 0
-	for(uint32_t i = 0; i < 4; ++i)
+	for(uint32_t i = 1; i < 4; ++i)
 	{
 		rtm::BVH::BuildArgs ba;
 		ba.cache_path = bvh_cache_path.c_str();
-		ba.width = 16;
+		ba.width = 7;
 		ba.build_method = rtm::BVH::SAH;
 		ba.silent = false;
-		ba.leaf_cost = rtm::BVH::CONSTANT;
+
+		ba.max_prims_merge = rtm::BVH::FTB;
+		ba.merge_nodes = true;
+		ba.merge_leafs = true;
 
 		if(i == 0)
 		{
 			printf("\nGreedy Collapse-----------------------------------------------------------------\n");
+			ba.leaf_cost = rtm::BVH::LINEAR;
 			ba.max_prims_collapse = 3;
 			ba.collapse_method = rtm::BVH::GREEDY;
 		}
@@ -194,6 +212,7 @@ int main(int argc, char* argv[])
 		if(i == 1)
 		{
 			printf("\nDynamic Collapse----------------------------------------------------------------\n");
+			ba.leaf_cost = rtm::BVH::LINEAR;
 			ba.max_prims_collapse = 3;
 			ba.collapse_method = rtm::BVH::DYNAMIC;
 		}
@@ -201,6 +220,7 @@ int main(int argc, char* argv[])
 		if(i == 2)
 		{
 			printf("\nCompression-aware Greedy Collapse-----------------------------------------------\n");
+			ba.leaf_cost = 2;
 			ba.max_prims_collapse = rtm::BVH::FTB;
 			ba.collapse_method = rtm::BVH::GREEDY;
 		}
@@ -208,13 +228,10 @@ int main(int argc, char* argv[])
 		if(i == 3)
 		{
 			printf("\nCompression-aware Dynamic Collapse----------------------------------------------\n");
+			ba.leaf_cost = 2;
 			ba.max_prims_collapse = rtm::BVH::FTB;
 			ba.collapse_method = rtm::BVH::DYNAMIC;
 		}
-
-		ba.max_prims_merge = rtm::BVH::FTB;
-		ba.merge_nodes = true;
-		ba.merge_leafs = true;
 
 		float node_collapse_time = 0.0f, leaf_collapse_time = 0.0f, node_merge_time = 0.0f, leaf_merge_time = 0.0f;
 		for(uint j = 0; j < 16; ++j)
@@ -237,7 +254,7 @@ int main(int argc, char* argv[])
 	printf("\n\n");
 #endif
 
-	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str(), 0, true);
+	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str(), 2, true);
 	args.nodes = bvh.nodes.data();
 
 #if USE_HECWBVH
@@ -264,7 +281,7 @@ int main(int argc, char* argv[])
 
 	std::vector<std::thread> threads;
 	uint thread_count = 1;
-	thread_count = max(std::thread::hardware_concurrency() - 1u, 1u);
+	thread_count = max(std::thread::hardware_concurrency() - 2u, 1u);
 	for (uint i = 1; i < thread_count; ++i) threads.emplace_back(kernel, args);
 	kernel(args);
 	for (uint i = 1; i < thread_count; ++i) threads[i - 1].join();
@@ -276,10 +293,23 @@ int main(int argc, char* argv[])
 	printf("Prim steps: %5.2f\n", (float)prim_steps.load() / args.framebuffer_size);
 	printf("Memory Traffic: %.1f B/ray\n", (float)(node_steps.load() + prim_steps.load()) * sizeof(rtm::CWBVH::Node) / args.framebuffer_size);
 
+#if 0
+	std::vector<uint32_t> sorted(fb_vec);
+	std::sort(sorted.begin(), sorted.end());
+	uint32_t lo10 = sorted[args.framebuffer_size / 10];
+	uint32_t hi10 = sorted[args.framebuffer_size * 9 / 10];
+	printf("Lo: %d\n", lo10);
+	printf("Hi: %d\n", hi10);
+	printf("Div: %d\n", hi10 - lo10);
+
+	//138624
+	for(uint32_t i = 0; i < args.framebuffer_size; ++i)
+		args.framebuffer[i] = encode_pixel(palette((args.framebuffer[i] - 4464.0f) / (8664.0f - 4464.0f)));
+#endif
+
 	stbi_flip_vertically_on_write(true);
 	stbi_write_png("./out.png", args.framebuffer_width, args.framebuffer_height, 4, args.framebuffer, 0);
 
-	delete[] args.framebuffer;
 	return 0;
 }
 #endif

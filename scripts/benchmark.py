@@ -20,12 +20,12 @@ def get_test_configs():
 
     #test_scenes = ["intel-sponza"]
     test_bounce_types = [0,1,2,3]
-    bvh_presets = [0,1,2,3]
+    bvh_presets = [4]
 
     configs = []
     for scene in test_scenes:
         for bounce_type in test_bounce_types:
-            for merging in [0,1]:
+            for merging in [0]:
                 for bvh_preset in bvh_presets:
                     config = base_config.copy()
                     config["bvh-preset"] = bvh_preset

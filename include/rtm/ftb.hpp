@@ -7,8 +7,8 @@ namespace rtm {
 //fp32 triangle block
 struct alignas(64) FTB
 {
-	const static uint BLOCK_SIZE = 128;
-	const static uint MAX_TRIS = 8;
+	const static uint BLOCK_SIZE = 64;
+	const static uint MAX_TRIS = 2;
 	const static uint MAX_VRTS = 9;
 
 	uint32_t is_int   : 1;
@@ -28,7 +28,7 @@ static_assert(sizeof(FTB) == FTB::BLOCK_SIZE);
 inline bool compress(uint prim_idx, uint prim_cnt, const Mesh& mesh, FTB* block = nullptr)
 {
 	if(prim_cnt > FTB::MAX_TRIS) return false;
-	if(prim_cnt <= 1 && !block) return true;
+	//if(prim_cnt <= 3 && !block) return true;
 
 	uvec3 index_buffer[FTB::MAX_TRIS];
 	for(uint i = 0; i < prim_cnt; ++i)
