@@ -61,7 +61,7 @@ public:
 	enum MaxPrims : uint8_t
 	{
 		PAIR = 0x20 + 2,
-		FTB = 0x40 + FTB::MAX_TRIS,
+		MAX_FTB = 0x40 + FTB::MAX_TRIS,
 	};
 
 
@@ -501,7 +501,7 @@ private:
 						unique_vrts.insert(_mesh->vertex_indices[i][j]);
 				if(unique_vrts.size() > 4) return cost_leaf;
 			}
-			else if(_max_prims == FTB)
+			else if(_max_prims == MAX_FTB)
 			{
 				if(!compress(prim_id0, prim_cnt, *_mesh))
 					return cost_leaf;
@@ -912,11 +912,11 @@ private:
 
 		std::string max_prims_collapse = std::to_string((uint)args.max_prims_collapse).c_str();
 		if(args.max_prims_collapse == PAIR) max_prims_collapse = "PAIR";
-		if(args.max_prims_collapse == FTB)  max_prims_collapse = "FTB";
+		if(args.max_prims_collapse == MAX_FTB)  max_prims_collapse = "FTB";
 
 		std::string max_prims_merge = std::to_string((uint)args.max_prims_merge).c_str();
 		if(args.max_prims_merge == PAIR) max_prims_merge = "PAIR";
-		if(args.max_prims_merge == FTB)  max_prims_merge = "FTB";
+		if(args.max_prims_merge == MAX_FTB)  max_prims_merge = "FTB";
 
 		printf("BVH%d: Size: %0.1f MiB\n", args.width, (float)sizeof(Node) * nodes.size() / (1 << 20));
 		printf("BVH%d: SAH Cost: %.2f\n", args.width, sah_cost);
@@ -934,9 +934,11 @@ private:
 		for(uint i = 0; i < 32; ++i) leaf_histo[i] = 0;
 
 		uint total_aabbs = 0, total_prims = 0, total_int = 0, total_leaf = 0;
+		uint last_ptr = ~0;
 		for(uint i = 0; i < nodes.size(); ++i)
 		{
 			const Node& node = nodes[i];
+			if(node.ptr.raw == last_ptr) continue;
 			if(node.ptr.is_int)
 			{
 				total_int++;
@@ -949,6 +951,7 @@ private:
 				total_prims += node.ptr.prim_cnt;
 				leaf_histo[node.ptr.prim_cnt]++;
 			}
+			last_ptr = node.ptr.raw;
 		}
 
 		printf("BVH%d: Node Fullness: %.2f\n", args.width, (float)total_aabbs / total_int);

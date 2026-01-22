@@ -8,7 +8,7 @@ namespace rtm {
 struct alignas(64) FTB
 {
 	const static uint BLOCK_SIZE = 64;
-	const static uint MAX_TRIS = 2;
+	const static uint MAX_TRIS = 1;
 	const static uint MAX_VRTS = 9;
 
 	uint32_t is_int   : 1;

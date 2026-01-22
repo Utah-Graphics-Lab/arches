@@ -11,7 +11,7 @@ namespace rtm {
 class HE2CWBVH
 {
 public:
-	const static uint WIDTH = 7;
+	const static uint WIDTH = 6;
 
 	struct alignas(64) Node
 	{
@@ -41,7 +41,7 @@ public:
 
 		if(merge)
 		{
-			args.max_prims_merge = BVH::FTB;
+			args.max_prims_merge = BVH::MAX_FTB;
 			args.merge_nodes = true;
 			args.merge_leafs = true;
 		}
@@ -55,22 +55,22 @@ public:
 
 		if(preset == 1)
 		{
-			args.leaf_cost = 2;
+			args.leaf_cost = sizeof(FTB) / sizeof(Node);
 			args.max_prims_collapse = 3;
 			args.collapse_method = BVH::DYNAMIC;
 		}
 
 		if(preset == 2)
 		{
-			args.leaf_cost = 2;
-			args.max_prims_collapse = BVH::FTB;
+			args.leaf_cost = sizeof(FTB) / sizeof(Node);
+			args.max_prims_collapse = BVH::MAX_FTB;
 			args.collapse_method = BVH::DYNAMIC;
 		}
 
 		if(preset == 3)
 		{
-			args.leaf_cost = 2;
-			args.max_prims_collapse = BVH::FTB;
+			args.leaf_cost = sizeof(FTB) / sizeof(Node);
+			args.max_prims_collapse = BVH::MAX_FTB;
 			args.collapse_method = BVH::GREEDY;
 			args.merge_leafs = false;
 		}
@@ -80,6 +80,8 @@ public:
 			args.leaf_cost = BVH::LINEAR;
 			args.max_prims_collapse = 1;
 			args.collapse_method = BVH::DYNAMIC;
+			args.merge_leafs = false;
+			args.merge_nodes = false;
 		}
 
 		rtm::BVH bvh(mesh, args);
@@ -149,6 +151,14 @@ public:
 		printf("NVCWBVH%d: Node Size:  %6.1f MiB (%4.1f B/tri)\n", WIDTH, (float)internal_size / (1 << 20), (float)internal_size / total_tris);
 		printf("NVCWBVH%d: Leaf Size:  %6.1f MiB (%4.1f B/tri)\n", WIDTH, (float)leaf_size / (1 << 20), (float)leaf_size / total_tris);
 		printf("NVCWBVH%d: Total Size: %6.1f MiB (%4.1f B/tri)\n", WIDTH, (float)total_size / (1 << 20), (float)total_size / total_tris);
+
+		//printf("NVCWBVH%d: Leaf Fullness: %.2f\n", WIDTH, (float)total_tris / ftbs.size());
+		//for(uint i = 0; i < FTB::MAX_TRIS; ++i)
+		//{
+		//	float precent = 100.0f * histo[i] / ftbs.size();
+		//	printf("%02d: %5.1f%% %.*s\n", i + 1, precent, (uint)std::round(precent),
+		//		"....................................................................................................");
+		//}
 	}
 
 	static bool compress(const BVH::Node* nodes, const uint* indices, uint node_cnt, HE2CWBVH::Node& cwnode)

@@ -172,7 +172,7 @@ static TRaXKernelArgs initilize_buffers(uint8_t* main_memory, paddr_t& heap_addr
 
 	std::vector<rtm::Triangle> tris;
 	mesh.get_triangles(tris);
-	//args.tris = write_vector(main_memory, 256, tris, heap_address);
+	args.tris = write_vector(main_memory, 256, tris, heap_address);
 
 	std::memcpy(main_memory + TRAX_KERNEL_ARGS_ADDRESS, &args, sizeof(TRaXKernelArgs));
 	return args;

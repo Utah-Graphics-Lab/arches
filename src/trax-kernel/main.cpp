@@ -46,7 +46,7 @@ static std::atomic_uint prim_steps = 0;
 
 inline static void kernel(const TRaXKernelArgs& args)
 {
-	constexpr uint32_t SPP = 16;
+	constexpr uint32_t SPP = 1;
 	constexpr uint TILE_X = 4;
 	constexpr uint TILE_Y = 8;
 	constexpr uint TILE_SIZE = TILE_X * TILE_Y;
@@ -94,8 +94,7 @@ inline static void kernel(const TRaXKernelArgs& args)
 			}
 		}
 
-		uint32_t bytes = (stats.node_steps * sizeof(rtm::CWBVH::Node) + stats.prim_steps * sizeof(rtm::FTB)) / SPP;
-		//args.framebuffer[fb_index] = bytes;
+		//args.framebuffer[fb_index] = (stats.node_steps * sizeof(rtm::CWBVH::Node) + stats.prim_steps * sizeof(rtm::FTB)) / SPP;
 
 		args.framebuffer[fb_index] = encode_pixel(radiance / SPP);
 	#ifndef __riscv
@@ -188,8 +187,8 @@ int main(int argc, char* argv[])
 
 	rtm::Mesh mesh(mesh_path);
 
-#if 0
-	for(uint32_t i = 1; i < 4; ++i)
+#if 1
+	for(uint32_t i = 4; i < 5; ++i)
 	{
 		rtm::BVH::BuildArgs ba;
 		ba.cache_path = bvh_cache_path.c_str();
@@ -197,7 +196,7 @@ int main(int argc, char* argv[])
 		ba.build_method = rtm::BVH::SAH;
 		ba.silent = false;
 
-		ba.max_prims_merge = rtm::BVH::FTB;
+		ba.max_prims_merge = rtm::BVH::MAX_FTB;
 		ba.merge_nodes = true;
 		ba.merge_leafs = true;
 
@@ -221,7 +220,7 @@ int main(int argc, char* argv[])
 		{
 			printf("\nCompression-aware Greedy Collapse-----------------------------------------------\n");
 			ba.leaf_cost = 2;
-			ba.max_prims_collapse = rtm::BVH::FTB;
+			ba.max_prims_collapse = rtm::BVH::MAX_FTB;
 			ba.collapse_method = rtm::BVH::GREEDY;
 		}
 
@@ -229,9 +228,20 @@ int main(int argc, char* argv[])
 		{
 			printf("\nCompression-aware Dynamic Collapse----------------------------------------------\n");
 			ba.leaf_cost = 2;
-			ba.max_prims_collapse = rtm::BVH::FTB;
+			ba.max_prims_collapse = rtm::BVH::MAX_FTB;
 			ba.collapse_method = rtm::BVH::DYNAMIC;
 		}
+
+		if(i == 4)
+		{
+			printf("\nCompression-aware Dynamic Collapse----------------------------------------------\n");
+			ba.leaf_cost = rtm::BVH::LINEAR;
+			ba.max_prims_collapse = 1;
+			ba.collapse_method = rtm::BVH::DYNAMIC;
+			ba.merge_nodes = false;
+			ba.merge_leafs = false;
+		}
+
 
 		float node_collapse_time = 0.0f, leaf_collapse_time = 0.0f, node_merge_time = 0.0f, leaf_merge_time = 0.0f;
 		for(uint j = 0; j < 16; ++j)
@@ -244,17 +254,17 @@ int main(int argc, char* argv[])
 			leaf_merge_time += b.leaf_merge_time;
 			ba.silent = true;
 		}
-		printf("BVH16: Leaf Collapse Time: %.1fms\n", leaf_collapse_time / 16);
-		printf("BVH16: Node Collapse Time: %.1fms\n", node_collapse_time / 16);
-		printf("BVH16: Node Merge Time: %.1fms\n", node_merge_time / 16);
-		printf("BVH16: Leaf Merge Time: %.1fms\n", leaf_merge_time / 16);
+		printf("BVHN: Leaf Collapse Time: %.1fms\n", leaf_collapse_time / 16);
+		printf("BVHN: Node Collapse Time: %.1fms\n", node_collapse_time / 16);
+		printf("BVHN: Node Merge Time: %.1fms\n", node_merge_time / 16);
+		printf("BVHN: Leaf Merge Time: %.1fms\n", leaf_merge_time / 16);
 		float total_time = leaf_collapse_time + node_collapse_time + node_merge_time + leaf_merge_time;
-		printf("BVH16: Total Time: %.1fms\n", total_time / 16);
+		printf("BVHN: Total Time: %.1fms\n", total_time / 16);
 	}
 	printf("\n\n");
 #endif
-
-	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str(), 2, true);
+	//6909.8 //5259.9
+	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str(), 4, false);
 	args.nodes = bvh.nodes.data();
 
 #if USE_HECWBVH

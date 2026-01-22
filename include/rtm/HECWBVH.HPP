@@ -12,7 +12,7 @@ namespace rtm {
 class HECWBVH
 {
 public:
-	const static uint WIDTH = 7;
+	const static uint WIDTH = 6;
 
 	union alignas(64) Node
 	{
@@ -46,7 +46,7 @@ public:
 
 		if(merge)
 		{
-			args.max_prims_merge = BVH::FTB;
+			args.max_prims_merge = BVH::MAX_FTB;
 			args.merge_nodes = true;
 			args.merge_leafs = true;
 		}
@@ -68,14 +68,14 @@ public:
 		if(preset == 2)
 		{
 			args.leaf_cost = BVH::CONSTANT;
-			args.max_prims_collapse = BVH::FTB;
+			args.max_prims_collapse = BVH::MAX_FTB;
 			args.collapse_method = BVH::DYNAMIC;
 		}
 
 		if(preset == 3)
 		{
 			args.leaf_cost = BVH::CONSTANT;
-			args.max_prims_collapse = BVH::FTB;
+			args.max_prims_collapse = BVH::MAX_FTB;
 			args.collapse_method = BVH::GREEDY;
 			args.merge_leafs = false;
 		}
