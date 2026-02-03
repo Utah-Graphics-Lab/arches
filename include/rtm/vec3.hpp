@@ -144,7 +144,7 @@ inline vec3 max(const vec3& a, const vec3& b)
 	return vec3(rtm::max(a[0], b[0]), rtm::max(a[1], b[1]), rtm::max(a[2], b[2]));
 }
 
-inline vec3 clamp(const vec3& v, const vec3& min, const vec3& max)
+inline vec3 clamp(const vec3& v, const vec3& min = 0.0f, const vec3& max = 1.0f)
 {
 	return rtm::min(rtm::max(v, min), max);
 }

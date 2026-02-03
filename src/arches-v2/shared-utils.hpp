@@ -4,7 +4,6 @@
 #include "simulator/simulator.hpp"
 
 #include "units/unit-dram.hpp"
-#include "units/unit-dram-ramulator.hpp"
 #include "units/unit-cache.hpp"
 #include "units/unit-crossbar.hpp"
 #include "units/unit-buffer.hpp"
@@ -36,8 +35,6 @@ static T* write_array(Units::UnitMainMemoryBase* main_memory, size_t alignment, 
 	heap_address = array_address + size * sizeof(T);
 	main_memory->direct_write(data, size * sizeof(T), array_address);
 	return reinterpret_cast<T*>(array_address);
-
-
 }
 
 template <typename T>
@@ -58,8 +55,6 @@ static T* write_array(uint8_t* main_memory, size_t alignment, T* data, size_t si
 template <typename T>
 static T* write_vector(uint8_t* main_memory, size_t alignment, std::vector<T> v, paddr_t& heap_address)
 {
-
-
 	return write_array(main_memory, alignment, v.data(), v.size(), heap_address);
 }
 
@@ -123,6 +118,8 @@ const static std::vector<SceneConfig> scene_configs =
 	{"san-miguel", rtm::vec3(7.448, 1.014, 12.357), rtm::vec3(8.056, 1.04, 11.563), 12.0f}, //SAN_MIGUEL
 	
 	{"hairball", rtm::vec3(0, 0, 10), rtm::vec3(0, 0, 0), 24.0f}, //HAIRBALL
+
+	{"bistro", rtm::vec3(-8.0, 2.0, 2.0), rtm::vec3(0.0f, 1.0f, -1.0f), 12.0f}, //BISTRO
 };
 
 
@@ -185,33 +182,20 @@ public:
 	SimulationConfig(int argc, char* argv[])
 	{
 		//Simulation
-		set_param("logging_interval", 10000);
+		set_param("logging-interval", 10000);
 
 		//Arch
-		set_param("arch_name", "TRaX");
-		set_param("max_rays", 128);
+		set_param("arch-name", "TRaX");
+		set_param("max-rays", 128);
 
 		//Workload
-		set_param("scene_name", "sibenik");
-		set_param("framebuffer_width", 1024);
-		set_param("framebuffer_height", 1024);
-
-		//DS
-		set_param("warm_l2", 0);
-		set_param("pregen_rays", 0);
-		set_param("pregen_bounce", 0);
-
-		set_param("use_scene_buffer", 0);
-		set_param("rays_on_chip", 0);
-		set_param("hits_on_chip", 0);
-		set_param("use_early", 0);
-		set_param("hit_delay", 0);
-		set_param("hit_buffer_size", 1024 * 1024);
-		set_param("traversal_scheme", 0);
-		set_param("weight_scheme", 0);
-
-		//RIC
-		set_param("max_active_set_size", 20 << 20);
+		set_param("scene-name", "intel-sponza");
+		set_param("framebuffer-width", 1024);
+		set_param("framebuffer-height", 1024);
+		set_param("pregen-rays", 1);
+		set_param("pregen-bounce", 1);
+		set_param("bvh-preset", 0);
+		set_param("bvh-merging", 0);
 
 		for(uint i = 1; i < argc; ++i)
 		{
@@ -229,20 +213,22 @@ public:
 			parse_param(key, value);
 		}
 
-		set_param("arch_id", -1);
+		set_param("arch-id", -1);
 		for(int i = 0; i < arch_names.size(); ++i)
-			if(get_string("arch_name").compare(arch_names[i]) == 0)
-				set_param("arch_id", i);
-		_assert(get_int("arch_id") != -1);
+			if(get_string("arch-name").compare(arch_names[i]) == 0)
+				set_param("arch-id", i);
+		_assert(get_int("arch-id") != -1);
 
-		set_param("scene_id", -1);
+		set_param("scene-id", -1);
 		for(int i = 0; i < scene_configs.size(); ++i)
-			if(get_string("scene_name").compare(scene_configs[i].name) == 0)
-				set_param("scene_id", i);
-		_assert(get_int("scene_id") != -1);
+			if(get_string("scene-name").compare(scene_configs[i].name) == 0)
+				set_param("scene-id", i);
+		_assert(get_int("scene-id") != -1);
 
-		uint scene_id = get_int("scene_id");
-		camera = rtm::Camera(get_int("framebuffer_width"), get_int("framebuffer_height"), scene_configs[scene_id].focal_length, scene_configs[scene_id].cam_pos, scene_configs[scene_id].cam_target);
+		uint scene_id = get_int("scene-id");
+		camera = rtm::Camera(get_int("framebuffer-width"), get_int("framebuffer-height"), scene_configs[scene_id].focal_length, scene_configs[scene_id].cam_pos, scene_configs[scene_id].cam_target);
+
+		print();
 	}
 
 	int get_int(const std::string& key) const

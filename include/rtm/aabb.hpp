@@ -30,6 +30,8 @@ public:
 
 	float surface_area() const
 	{
+		if(min.x > max.x) return 0.0f;
+
 		float x = max.x - min.x;
 		float y = max.y - min.y;
 		float z = max.z - min.z;
@@ -58,18 +60,17 @@ public:
 	}
 };
 
-//Quantized aabb
 struct QAABB16
 {
 	uint16_t min[3];
 	uint16_t max[3];
 };
 
-//Quantized aabb
 struct QAABB8
 {
 	uint8_t min[3];
 	uint8_t max[3];
+	bool is_valid() const { return min[0] <= max[0] && min[1] <= max[1] && min[2] <= max[2]; }
 };
 
 }

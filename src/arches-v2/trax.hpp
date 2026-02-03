@@ -1,8 +1,10 @@
 #pragma once
+
 #include "shared-utils.hpp"
 #include "units/trax/unit-tp.hpp"
 #include "units/trax/unit-rt-core.hpp"
-#include "units/trax/unit-prt-core.hpp"
+#include "trax-kernel/include.hpp"
+#include "trax-kernel/intersect.hpp"
 
 namespace Arches {
 
@@ -114,19 +116,11 @@ const static InstructionInfo custom0(CUSTOM_OPCODE0, META_DECL{return isa_custom
 
 namespace TRaX {
 
-#include "trax-kernel/include.hpp"
-#include "trax-kernel/intersect.hpp"
-
 typedef Units::UnitDRAMRamulator UnitDRAM;
 typedef Units::UnitCache UnitL2Cache;
 typedef Units::UnitCache UnitL1Cache;
 typedef rtm::FTB PrimBlocks;
-
-#if USE_HEBVH
-typedef Units::TRaX::UnitRTCore<rtm::HECWBVH::Node, PrimBlocks> UnitRTCore;
-#else
-typedef Units::TRaX::UnitRTCore<rtm::NVCWBVH::Node, PrimBlocks> UnitRTCore;
-#endif
+typedef Units::TRaX::UnitRTCore<rtm::CWBVH::Node, PrimBlocks> UnitRTCore;
 
 static TRaXKernelArgs initilize_buffers(uint8_t* main_memory, paddr_t& heap_address, const SimulationConfig& sim_config, uint page_size)
 {
@@ -149,63 +143,32 @@ static TRaXKernelArgs initilize_buffers(uint8_t* main_memory, paddr_t& heap_addr
 	args.light_dir = rtm::normalize(rtm::vec3(4.5f, 42.5f, 5.0f));
 	args.camera = sim_config.camera;
 
-	std::vector<rtm::BVH2::BuildObject> bos;
 	rtm::Mesh mesh(datasets_folder + scene_name + ".obj");
-	//mesh.quantize_verts();
-	mesh.get_build_objects(bos);
-	rtm::BVH2 bvh2(cache_folder + scene_name + ".bvh", bos, 2);
-	mesh.reorder(bos);
+	rtm::CWBVH bvh(mesh, (cache_folder + scene_name + ".bvh").c_str());
 
 	std::vector<rtm::Ray> rays(args.framebuffer_size);
 	if(args.pregen_rays)
 	{
 		std::string ray_file = scene_name + "-" + std::to_string(args.framebuffer_width) + "-" + std::to_string(pregen_bounce) + ".rays";
-		pregen_rays(args.framebuffer_width, args.framebuffer_height, args.camera, bvh2, mesh, pregen_bounce, rays);
+	#if USE_HECWBVH
+		pregen_rays(&bvh.nodes[0], &bvh.nodes[0].ftb, mesh, args.framebuffer_width, args.framebuffer_height, args.camera, pregen_bounce, rays);
+	#else
+		pregen_rays(&bvh.nodes[0], &bvh.ftbs[0], mesh, args.framebuffer_width, args.framebuffer_height, args.camera, pregen_bounce, rays);
+	#endif
 		args.rays = write_vector(main_memory, 256, rays, heap_address);
 	}
 
-#if USE_HEBVH
-	//DGF
-	if(typeid(PrimBlocks) == typeid(rtm::DGFMesh::Block))
-	{ 
-		rtm::WBVH wbvh(dgf_bvh2, dgf_bo);
-		dgf_mesh.reorder(dgf_bo);
-		rtm::HECWBVH hecwbvh(wbvh, (uint8_t*)dgf_mesh.blocks.data(), sizeof(rtm::DGFMesh::Block));
-		args.nodes = write_vector(main_memory, 256, hecwbvh.nodes, heap_address);
-		args.dgf_blocks = (rtm::DGFMesh::Block*)args.nodes;
-	}
+	args.nodes = write_vector(main_memory, 256, bvh.nodes, heap_address);
 
-	//QTB
-	if(typeid(PrimBlocks) == typeid(rtm::QTB))
-	{
-		rtm::WBVH wbvh(bvh2, bos, &mesh, true);
-		mesh.reorder(bos);
-		rtm::HECWBVH hecwbvh(wbvh, (uint8_t*)wbvh.qt_blocks.data(), sizeof(rtm::QTB));
-		args.nodes = write_vector(main_memory, 256, hecwbvh.nodes, heap_address);
-		args.qt_blocks = (rtm::QTB*)args.nodes;
-	}
-
-	//FTB
-	if(typeid(PrimBlocks) == typeid(rtm::FTB))
-	{
-		rtm::WBVH wbvh(bvh2, bos, &mesh, false);
-		mesh.reorder(bos);
-		rtm::HECWBVH hecwbvh(wbvh, (uint8_t*)wbvh.ft_blocks.data(), sizeof(rtm::FTB));
-		args.nodes = write_vector(main_memory, 256, hecwbvh.nodes, heap_address);
-		args.ft_blocks = (rtm::FTB*)args.nodes;
-	}
-#else
-	//FTB
-	if(typeid(PrimBlocks) == typeid(rtm::FTB))
-	{
-		rtm::WBVH wbvh(bvh2, bos, &mesh, false);
-		mesh.reorder(bos);
-		rtm::NVCWBVH cwbvh(wbvh);
-		args.nodes = write_vector(main_memory, 256, cwbvh.nodes, heap_address);
-		//args.nodes = write_vector(main_memory, 256, wbvh.nodes, heap_address);
-		args.ft_blocks = write_vector(main_memory, 256, wbvh.ft_blocks, heap_address);
-	}
+#if USE_HECWBVH
+	args.ftbs = (rtm::FTB*)args.nodes;
+#else 
+	args.ftbs = write_vector(main_memory, 256, bvh.ftbs, heap_address);
 #endif
+
+	std::vector<rtm::Triangle> tris;
+	mesh.get_triangles(tris);
+	args.tris = write_vector(main_memory, 256, tris, heap_address);
 
 	std::memcpy(main_memory + TRAX_KERNEL_ARGS_ADDRESS, &args, sizeof(TRaXKernelArgs));
 	return args;
@@ -590,7 +553,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	#if TRAX_USE_RT_CORE
 		rtc_config.num_clients = num_tps;
 		rtc_config.node_base_addr = (paddr_t)kernel_args.nodes;
-		rtc_config.tri_base_addr = (paddr_t)kernel_args.ft_blocks;
+		rtc_config.tri_base_addr = (paddr_t)kernel_args.ftbs;
 		rtc_config.cache = l1ds.back();
 		rtc_config.cache_port = num_tps;
 		rtc_config.cache_port_stride = num_tps / l1d_config.num_banks;

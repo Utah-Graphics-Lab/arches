@@ -12,19 +12,28 @@
 namespace rtm
 {
 
-inline uint32_t to_u32(float f32)
+inline uint32_t as_u32(float f32)
 {
 	return *((uint32_t*)&f32);
 }
 
-inline float to_f32(uint32_t u32)
+inline float as_f32(uint32_t u32)
 {
 	return *((float*)&u32);
+}
+
+inline float to_bf24(float f)
+{
+	uint u = *(uint*)&f;
+	if(f < 0) u += 255;
+	u &= 0xffffff00;
+	return *(float*)&u;
 }
 
 inline float min(float a, float b) { return (b < a) ? b : a;}
 inline float max(float a, float b) { return (a < b) ? b : a;}
 inline float abs(float a) { return a > 0.0f ? a : -a; }
+inline float clamp(float a, float min = 0.0f, float max = 1.0f) { return rtm::min(rtm::max(a, min), max); }
 
 inline float sqrt(float input)
 {
@@ -123,6 +132,7 @@ union float32_bf
 	float f32;
 	uint32_t u32;
 
+	float32_bf(uint32_t u) : u32(u) {}
 	float32_bf(float f) : f32(f) {}
 	float32_bf(uint8_t sign, uint8_t exp, uint32_t mantisa) : sign(sign), exp(exp), mantisa(mantisa) {}
 };

@@ -38,7 +38,7 @@ private:
 	struct StackEntry
 	{
 		float t;
-		rtm::WBVH::Node::Data data;
+		rtm::BVHPtr data;
 		bool is_last;
 
 		StackEntry() {}
@@ -81,9 +81,9 @@ private:
 		rtm::vec3 inv_d;
 		rtm::Hit hit;
 
-		const static uint STACK_SIZE = 4;
+		const static uint STACK_SIZE = 32;
 		rtm::RestartTrail restart_trail;
-		StackEntry stack[STACK_SIZE + rtm::WBVH::WIDTH];
+		StackEntry stack[STACK_SIZE + 31];
 		uint8_t stack_size;
 		uint8_t level;
 		bool update_restart_trail;

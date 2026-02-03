@@ -4,31 +4,35 @@ import subprocess
 import shutil
 
 def get_test_configs():
-    framebuffer_dim = 512
+    framebuffer_dim = 1024
 
     base_config = {
-        "arch_name" : "TRaX",
-        "scene_name" : "sponza",
-        "framebuffer_width": framebuffer_dim,
-        "framebuffer_height": framebuffer_dim,
-        "pregen_rays": 1,
-        "pregen_bounce": 0,
+        "arch-name" : "TRaX",
+        "scene-name" : "sponza",
+        "framebuffer-width": framebuffer_dim,
+        "framebuffer-height": framebuffer_dim,
+        "pregen-rays": 1,
+        "pregen-bounce": 0,
     }
     
-    #test_scenes = ["crytek-sponza", "intel-sponza" , "san-miguel"]
-    #test_scenes = ["sibenik", "crytek-sponza", "intel-sponza", "san-miguel"]
-    test_scenes = ["intel-sponza"]
-    #test_arch = ["TRaX"]
-    test_bounce_types = [0,1,2]
-    #in_orders = [0,1]
+    test_scenes = ["crytek-sponza", "intel-sponza" , "hairball", "bistro", "san-miguel",]
+    #test_scenes = ["hairball"]
+
+    #test_scenes = ["intel-sponza"]
+    test_bounce_types = [0,1,2,3]
+    bvh_presets = [1]
 
     configs = []
     for scene in test_scenes:
         for bounce_type in test_bounce_types:
-            config = base_config.copy()
-            config["scene_name"] = scene
-            config["pregen_bounce"] = bounce_type
-            configs.append(config)
+            for merging in [0]:
+                for bvh_preset in bvh_presets:
+                    config = base_config.copy()
+                    config["bvh-preset"] = bvh_preset
+                    config["bvh-merging"] = merging
+                    config["scene-name"] = scene
+                    config["pregen-bounce"] = bounce_type
+                    configs.append(config)
 
     return configs
 
@@ -46,7 +50,7 @@ def generate_log_filename(config, log_dir="logs"):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    filename = f"{config['arch_name']}-{config['scene_name']}-bounce{config['pregen_bounce']}.log"
+    filename = f"{config['arch-name']}-{config['scene-name']}-bounce{config['pregen-bounce']}-m{config['bvh-merging']}-bvh{config['bvh-preset']}.log"
     return os.path.join(log_dir, filename)
 
 
@@ -55,7 +59,7 @@ def generate_image_filename(config, output_dir="images"):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    filename = f"{config['arch_name']}-{config['scene_name']}-bounce-{config['pregen_bounce']}.png"
+    filename = f"{config['arch-name']}-{config['scene-name']}-bounce{config['pregen-bounce']}-m{config['bvh-merging']}-bvh{config['bvh-preset']}.png"
     return os.path.join(output_dir, filename)
 
 

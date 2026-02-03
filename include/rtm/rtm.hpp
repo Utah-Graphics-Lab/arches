@@ -23,14 +23,11 @@
 
 #include "mesh.hpp"
 #include "dgf.hpp"
-#include "triangle-blocks.hpp"
+#include "ftb.hpp"
+#include "qtb.hpp"
 
 #include "bvh.hpp"
-#include "wide-bvh.hpp"
-#include "compressed-wide-bvh.hpp"
+#include "nvcwbvh.hpp"
 #include "hecwbvh.hpp"
-
-#include "wide-treelet-bvh.hpp"
-#include "compressed-wide-treelet-bvh.hpp"
 
 #include "intersect.hpp"

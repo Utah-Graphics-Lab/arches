@@ -15,13 +15,42 @@ inline static uint32_t encode_pixel(rtm::vec3 in)
 	return out;
 }
 
+inline rtm::vec3 palette(float t)
+{
+	t = rtm::clamp(t, 0.0, 1.0f);
+
+	const rtm::vec3 k[] = {
+		rtm::vec3( 000.13572138f, 000.09140261f, 000.10667330f),
+		rtm::vec3( 004.61539260f, 002.19418839f, 012.64194608f),
+		rtm::vec3(-042.66032258f, 004.84296658f,-060.58204836f),
+		rtm::vec3( 132.13108234f,-014.18503333f, 110.36276771f),
+		rtm::vec3(-152.94239396f, 004.27729857f,-089.90310912f),
+		rtm::vec3( 059.28637943f, 002.82956604f, 027.34824973f)
+	};
+	
+	float t_pow = t;
+	rtm::vec3 color(k[1] * t + k[0]);
+	for(uint i = 2; i < 6; ++i)
+	{
+		t_pow *= t;
+		color += k[i] * t_pow;
+	}
+
+	return rtm::clamp(color);
+}
+
+#ifndef  __riscv
+static std::atomic_uint node_steps = 0;
+static std::atomic_uint prim_steps = 0;
+#endif
+
 inline static void kernel(const TRaXKernelArgs& args)
 {
+	constexpr uint32_t SPP = 256;
 	constexpr uint TILE_X = 4;
 	constexpr uint TILE_Y = 8;
 	constexpr uint TILE_SIZE = TILE_X * TILE_Y;
 	
-	uint node_steps = 0, prim_steps = 0;
 	for (uint index = fchthrd(); index < args.framebuffer_size; index = fchthrd())
 	{
 		uint tile_id = index / TILE_SIZE;
@@ -33,32 +62,65 @@ inline static void kernel(const TRaXKernelArgs& args)
 		uint32_t y = tile_y * TILE_Y + thread_id / TILE_X;
 		uint fb_index = y * args.framebuffer_width + x;
 		
-		//uint fb_index = index, x, y;
-		//deinterleave_bits(fb_index, x, y);
-
 		rtm::RNG rng(fb_index);
-		rtm::Ray ray = args.pregen_rays ? args.rays[fb_index] : args.camera.generate_ray_through_pixel(x, y);
+		IntersectStats stats;
 
-		//ray.t_min = u_to_f((f_to_u(ray.t_min) & 0xffff0000) | (tile_id & 0xffff));
-
-		rtm::Hit hit(ray.t_max, rtm::vec2(0.0f), ~0u);
-
-		#if defined(__riscv) && (TRAX_USE_RT_CORE)
-			_traceray<0x0u>(index, ray, hit);
-		#else
-			intersect(args.nodes, args.ft_blocks, ray, hit, node_steps, prim_steps);
-		#endif
-
-		if(hit.id != ~0u)
+	#if 0
+		float radiance = 0.0f;
+		for(uint32_t i = 0; i < SPP; ++i)
 		{
-			args.framebuffer[fb_index] = rtm::RNG::hash(hit.id) | 0xff000000;
+			float throughput = 1.0f;
+			rtm::Ray ray = args.pregen_rays ? args.rays[fb_index] : args.camera.generate_ray_through_pixel(x, y);
+			for(uint32_t j = 0; j < 3; ++j)
+			{
+				rtm::Hit hit(ray.t_max, rtm::vec2(0.0f), ~0u);
+			#if defined(__riscv) && (TRAX_USE_RT_CORE)
+				_traceray<0x0u>(index, ray, hit);
+			#else
+				intersect(args.nodes, args.ftbs, ray, hit, stats);
+			#endif
+
+				if(hit.t >= ray.t_max)
+				{
+					radiance += throughput * 2.0f;
+					break;
+				}
+
+				rtm::vec3 n = args.tris[hit.id].normal();
+				uint hash = rtm::RNG::hash(hit.id) | 0xff'00'00'00;
+
+				ray.o += ray.d * hit.t;
+				ray.d = cosine_sample_hemisphere(n, rng); // generate secondray rays
+				throughput *= 0.8f;
+			}
+		}
+
+		args.framebuffer[fb_index] = (stats.node_steps * sizeof(rtm::CWBVH::Node) + stats.prim_steps * sizeof(rtm::FTB)) / SPP;
+		//args.framebuffer[fb_index] = encode_pixel(radiance / SPP);
+	#else 
+		rtm::Ray ray = args.pregen_rays ? args.rays[fb_index] : args.camera.generate_ray_through_pixel(x, y);
+		rtm::Hit hit(ray.t_max, rtm::vec2(0.0f), ~0u);
+			
+	#if defined(__riscv) && (TRAX_USE_RT_CORE)
+		_traceray<0x0u>(index, ray, hit);
+	#else
+		intersect(args.nodes, args.ftbs, ray, hit, stats);
+	#endif
+
+		if(hit.t < ray.t_max)
+		{
+			uint hash = rtm::RNG::hash(hit.id) | 0xff'00'00'00;
+			args.framebuffer[fb_index] = hash;
 		}
 		else
 		{
 			args.framebuffer[fb_index] = 0xff000000;
 		}
-
-		//args.framebuffer[fb_index] = encode_pixel(steps / 64.0f);
+	#endif
+	#ifndef __riscv
+		node_steps += stats.node_steps;
+		prim_steps += stats.prim_steps;
+	#endif
 	}
 }
 
@@ -110,18 +172,21 @@ int main()
 #include "stbi/stb_image.h"
 #include "stbi/stb_image_write.h"
 
+#include <Windows.h>
 int main(int argc, char* argv[])
 {
 	uint pregen_bounce = 0;
-	std::string scene_name = "intel-sponza";
+	std::string scene_name = argv[1];
 
 	TRaXKernelArgs args;
-	args.framebuffer_width = 1024;
-	args.framebuffer_height = 1024;
+	args.framebuffer_width = 1920;
+	args.framebuffer_height = 1080;
 	args.framebuffer_size = args.framebuffer_width * args.framebuffer_height;
-	args.framebuffer = new uint32_t[args.framebuffer_size];
+	std::vector<uint32_t> fb_vec(args.framebuffer_size);
+	args.framebuffer = fb_vec.data();
 
-	args.pregen_rays = true;
+	args.pregen_rays = false;
+	//SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
 
 	args.light_dir = rtm::normalize(rtm::vec3(4.5f, 42.5f, 5.0f));
 	if(scene_name.compare("sibenik") == 0)
@@ -132,55 +197,149 @@ int main(int argc, char* argv[])
 		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(-900.6f, 150.8f, 120.74f), rtm::vec3(79.7f, 14.0f, -17.4f));
 	if(scene_name.compare("san-miguel") == 0)
 		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(7.448, 1.014, 12.357), rtm::vec3(7.448 + 0.608, 1.014 + 0.026, 12.357 - 0.794));
+	if(scene_name.compare("bistro") == 0)
+		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(-8.0, 2.0, 2.0), rtm::vec3(0.0f, 1.0f, -1.0f));
+	if(scene_name.compare("hairball") == 0)
+		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 24.0f, rtm::vec3(0.0, 0.0, 10.0), rtm::vec3(0.0f, 0.0f, 0.0f));
 
-	std::vector<rtm::BVH2::BuildObject> bos;
-	rtm::Mesh mesh("../../../datasets/" + scene_name + ".obj");
-	mesh.get_build_objects(bos);
-	rtm::BVH2 bvh2("../../../datasets/cache/" + scene_name + ".bvh", bos, 2);
-	mesh.reorder(bos);
-	printf("\n");
+	std::string mesh_path = "../../../datasets/" + scene_name + ".obj";
+	std::string bvh_cache_path = "../../../datasets/cache/" + scene_name + ".bvh";
+
+	rtm::Mesh mesh(mesh_path);
+
+#if 0
+	for(uint32_t i = 4; i < 5; ++i)
+	{
+		rtm::BVH::BuildArgs ba;
+		ba.cache_path = bvh_cache_path.c_str();
+		ba.width = 7;
+		ba.build_method = rtm::BVH::SAH;
+		ba.silent = false;
+
+		ba.max_prims_merge = rtm::BVH::MAX_FTB;
+		ba.merge_nodes = true;
+		ba.merge_leafs = true;
+
+		if(i == 0)
+		{
+			printf("\nGreedy Collapse-----------------------------------------------------------------\n");
+			ba.leaf_cost = rtm::BVH::LINEAR;
+			ba.max_prims_collapse = 3;
+			ba.collapse_method = rtm::BVH::GREEDY;
+		}
+
+		if(i == 1)
+		{
+			printf("\nDynamic Collapse----------------------------------------------------------------\n");
+			ba.leaf_cost = rtm::BVH::LINEAR;
+			ba.max_prims_collapse = 3;
+			ba.collapse_method = rtm::BVH::DYNAMIC;
+		}
+
+		if(i == 2)
+		{
+			printf("\nCompression-aware Greedy Collapse-----------------------------------------------\n");
+			ba.leaf_cost = 2;
+			ba.max_prims_collapse = rtm::BVH::MAX_FTB;
+			ba.collapse_method = rtm::BVH::GREEDY;
+		}
+
+		if(i == 3)
+		{
+			printf("\nCompression-aware Dynamic Collapse----------------------------------------------\n");
+			ba.leaf_cost = 2;
+			ba.max_prims_collapse = rtm::BVH::MAX_FTB;
+			ba.collapse_method = rtm::BVH::DYNAMIC;
+		}
+
+		if(i == 4)
+		{
+			printf("\nCompression-aware Dynamic Collapse----------------------------------------------\n");
+			ba.leaf_cost = rtm::BVH::LINEAR;
+			ba.max_prims_collapse = 1;
+			ba.collapse_method = rtm::BVH::DYNAMIC;
+			ba.merge_nodes = false;
+			ba.merge_leafs = false;
+		}
+
+
+		float node_collapse_time = 0.0f, leaf_collapse_time = 0.0f, node_merge_time = 0.0f, leaf_merge_time = 0.0f;
+		for(uint j = 0; j < 16; ++j)
+		{
+			rtm::Mesh mesh_cpy(mesh);
+			rtm::BVH b(mesh_cpy, ba);
+			node_collapse_time += b.node_collapse_time;
+			leaf_collapse_time += b.leaf_collapse_time;
+			node_merge_time += b.node_merge_time;
+			leaf_merge_time += b.leaf_merge_time;
+			ba.silent = true;
+		}
+		printf("BVHN: Leaf Collapse Time: %.1fms\n", leaf_collapse_time / 16);
+		printf("BVHN: Node Collapse Time: %.1fms\n", node_collapse_time / 16);
+		printf("BVHN: Node Merge Time: %.1fms\n", node_merge_time / 16);
+		printf("BVHN: Leaf Merge Time: %.1fms\n", leaf_merge_time / 16);
+		float total_time = leaf_collapse_time + node_collapse_time + node_merge_time + leaf_merge_time;
+		printf("BVHN: Total Time: %.1fms\n", total_time / 16);
+	}
+	printf("\n\n");
+#endif
+	//6909.8 //5259.9
+	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str(), 0, false);
+	args.nodes = bvh.nodes.data();
+
+#if USE_HECWBVH_V1
+	args.ftbs = (rtm::FTB*)args.nodes;
+#else
+	args.ftbs = bvh.ftbs.data();
+#endif
 
 	std::vector<rtm::Ray> rays(args.framebuffer_size);
 	if(args.pregen_rays)
 	{
 		std::string ray_file = scene_name + "-" + std::to_string(args.framebuffer_width) + "-" + std::to_string(pregen_bounce) + ".rays";
-		pregen_rays(args.framebuffer_width, args.framebuffer_height, args.camera, bvh2, mesh, pregen_bounce, rays);
+		pregen_rays(args.nodes, args.ftbs, mesh, args.framebuffer_width, args.framebuffer_height, args.camera, pregen_bounce, rays);
 		args.rays = rays.data();
 	}
-	printf("\n");
 
-#if USE_HEBVH
-	rtm::WBVH wbvh(bvh2, bos, &mesh, false);
-	mesh.reorder(bos);
-	rtm::HECWBVH hecwbvh(wbvh, (uint8_t*)wbvh.ft_blocks.data(), sizeof(rtm::FTB));
-	args.nodes = hecwbvh.nodes.data();
-	args.ft_blocks = (rtm::FTB*)args.nodes;
-#else
-	rtm::WBVH wbvh(bvh2, bos, &mesh, false);
-	mesh.reorder(bos);
-	rtm::NVCWBVH nvcwbvh(wbvh);
-	args.nodes = nvcwbvh.nodes.data();
-	args.ft_blocks = wbvh.ft_blocks.data();
-#endif
+	std::vector<rtm::Triangle> tris;
+	mesh.get_triangles(tris);
+	args.tris = tris.data();
 
+	reset_fchthrd();
 	printf("\nStarting Taveral\n");
 	auto start = std::chrono::high_resolution_clock::now();
 
 	std::vector<std::thread> threads;
 	uint thread_count = 1;
-	//thread_count = std::max(std::thread::hardware_concurrency() - 1u, 1u);
+	thread_count = max(std::thread::hardware_concurrency() - 2u, 1u);
 	for (uint i = 1; i < thread_count; ++i) threads.emplace_back(kernel, args);
 	kernel(args);
-	for (uint i = 1; i < thread_count; ++i) threads[i].join();
+	for (uint i = 1; i < thread_count; ++i) threads[i - 1].join();
 
 	auto stop = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
 	printf("Runtime: %dms\n", (uint)duration.count());
+	printf("Node steps: %5.2f\n", (float)node_steps.load() / args.framebuffer_size);
+	printf("Prim steps: %5.2f\n", (float)prim_steps.load() / args.framebuffer_size);
+	printf("Memory Traffic: %.1f B/ray\n", (float)(node_steps.load() + prim_steps.load()) * sizeof(rtm::CWBVH::Node) / args.framebuffer_size);
+
+#if 0
+	std::vector<uint32_t> sorted(fb_vec);
+	std::sort(sorted.begin(), sorted.end());
+	uint32_t lo10 = sorted[args.framebuffer_size / 10];
+	uint32_t hi10 = sorted[args.framebuffer_size * 9 / 10];
+	printf("Lo: %d\n", lo10);
+	printf("Hi: %d\n", hi10);
+	printf("Div: %d\n", hi10 - lo10);
+
+	//138624
+	for(uint32_t i = 0; i < args.framebuffer_size; ++i)
+		args.framebuffer[i] = encode_pixel(palette((args.framebuffer[i] - 4464.0f) / (8664.0f - 4464.0f)));
+#endif
 
 	stbi_flip_vertically_on_write(true);
 	stbi_write_png("./out.png", args.framebuffer_width, args.framebuffer_height, 4, args.framebuffer, 0);
 
-	delete[] args.framebuffer;
 	return 0;
 }
 #endif

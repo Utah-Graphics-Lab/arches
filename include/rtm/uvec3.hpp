@@ -8,7 +8,16 @@ namespace rtm
 class uvec3
 {
 public:
-	uint32_t e[3];
+	union
+	{
+		uint32_t e[3];
+		struct
+		{
+			uint32_t x;
+			uint32_t y;
+			uint32_t z;
+		};
+	};
 
 	uvec3() = default;
 	uvec3(uint32_t i) { e[0] = i;  e[1] = i; e[2] = i; }

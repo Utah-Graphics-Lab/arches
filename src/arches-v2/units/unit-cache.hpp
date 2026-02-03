@@ -3,7 +3,6 @@
 
 #include "util/arbitration.hpp"
 #include "unit-cache-base.hpp"
-#include "units/dual-streaming/unit-scene-buffer.hpp"
 
 namespace Arches {
 namespace Units {
