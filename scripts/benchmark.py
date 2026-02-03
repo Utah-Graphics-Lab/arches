@@ -16,11 +16,11 @@ def get_test_configs():
     }
     
     test_scenes = ["crytek-sponza", "intel-sponza" , "hairball", "bistro", "san-miguel",]
-    #test_scenes = ["intel-sponza"]
+    #test_scenes = ["hairball"]
 
     #test_scenes = ["intel-sponza"]
     test_bounce_types = [0,1,2,3]
-    bvh_presets = [4]
+    bvh_presets = [1]
 
     configs = []
     for scene in test_scenes:

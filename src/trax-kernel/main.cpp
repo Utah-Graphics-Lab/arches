@@ -46,7 +46,7 @@ static std::atomic_uint prim_steps = 0;
 
 inline static void kernel(const TRaXKernelArgs& args)
 {
-	constexpr uint32_t SPP = 1;
+	constexpr uint32_t SPP = 256;
 	constexpr uint TILE_X = 4;
 	constexpr uint TILE_Y = 8;
 	constexpr uint TILE_SIZE = TILE_X * TILE_Y;
@@ -65,6 +65,7 @@ inline static void kernel(const TRaXKernelArgs& args)
 		rtm::RNG rng(fb_index);
 		IntersectStats stats;
 
+	#if 0
 		float radiance = 0.0f;
 		for(uint32_t i = 0; i < SPP; ++i)
 		{
@@ -81,7 +82,7 @@ inline static void kernel(const TRaXKernelArgs& args)
 
 				if(hit.t >= ray.t_max)
 				{
-					radiance += throughput * 16.0f;
+					radiance += throughput * 2.0f;
 					break;
 				}
 
@@ -94,9 +95,28 @@ inline static void kernel(const TRaXKernelArgs& args)
 			}
 		}
 
-		//args.framebuffer[fb_index] = (stats.node_steps * sizeof(rtm::CWBVH::Node) + stats.prim_steps * sizeof(rtm::FTB)) / SPP;
+		args.framebuffer[fb_index] = (stats.node_steps * sizeof(rtm::CWBVH::Node) + stats.prim_steps * sizeof(rtm::FTB)) / SPP;
+		//args.framebuffer[fb_index] = encode_pixel(radiance / SPP);
+	#else 
+		rtm::Ray ray = args.pregen_rays ? args.rays[fb_index] : args.camera.generate_ray_through_pixel(x, y);
+		rtm::Hit hit(ray.t_max, rtm::vec2(0.0f), ~0u);
+			
+	#if defined(__riscv) && (TRAX_USE_RT_CORE)
+		_traceray<0x0u>(index, ray, hit);
+	#else
+		intersect(args.nodes, args.ftbs, ray, hit, stats);
+	#endif
 
-		args.framebuffer[fb_index] = encode_pixel(radiance / SPP);
+		if(hit.t < ray.t_max)
+		{
+			uint hash = rtm::RNG::hash(hit.id) | 0xff'00'00'00;
+			args.framebuffer[fb_index] = hash;
+		}
+		else
+		{
+			args.framebuffer[fb_index] = 0xff000000;
+		}
+	#endif
 	#ifndef __riscv
 		node_steps += stats.node_steps;
 		prim_steps += stats.prim_steps;
@@ -166,7 +186,7 @@ int main(int argc, char* argv[])
 	args.framebuffer = fb_vec.data();
 
 	args.pregen_rays = false;
-	SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
+	//SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
 
 	args.light_dir = rtm::normalize(rtm::vec3(4.5f, 42.5f, 5.0f));
 	if(scene_name.compare("sibenik") == 0)
@@ -180,14 +200,14 @@ int main(int argc, char* argv[])
 	if(scene_name.compare("bistro") == 0)
 		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(-8.0, 2.0, 2.0), rtm::vec3(0.0f, 1.0f, -1.0f));
 	if(scene_name.compare("hairball") == 0)
-		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(0.0, 0.0, 5.0), rtm::vec3(0.0f, 0.0f, 0.0f));
+		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 24.0f, rtm::vec3(0.0, 0.0, 10.0), rtm::vec3(0.0f, 0.0f, 0.0f));
 
 	std::string mesh_path = "../../../datasets/" + scene_name + ".obj";
 	std::string bvh_cache_path = "../../../datasets/cache/" + scene_name + ".bvh";
 
 	rtm::Mesh mesh(mesh_path);
 
-#if 1
+#if 0
 	for(uint32_t i = 4; i < 5; ++i)
 	{
 		rtm::BVH::BuildArgs ba;
@@ -264,10 +284,10 @@ int main(int argc, char* argv[])
 	printf("\n\n");
 #endif
 	//6909.8 //5259.9
-	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str(), 4, false);
+	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str(), 0, false);
 	args.nodes = bvh.nodes.data();
 
-#if USE_HECWBVH
+#if USE_HECWBVH_V1
 	args.ftbs = (rtm::FTB*)args.nodes;
 #else
 	args.ftbs = bvh.ftbs.data();

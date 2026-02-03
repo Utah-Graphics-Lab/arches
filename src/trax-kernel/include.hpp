@@ -5,10 +5,10 @@
 #define TRAX_USE_HARDWARE_INTERSECTORS 0
 #define TRAX_KERNEL_ARGS_ADDRESS 256ull
 
-#define USE_HECWBVH 0
+#define USE_HECWBVH_V1 0
 
 namespace rtm {
-#if USE_HECWBVH
+#if USE_HECWBVH_V1
 typedef rtm::HECWBVH CWBVH;
 #else
 typedef rtm::HE2CWBVH CWBVH;

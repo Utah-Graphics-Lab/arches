@@ -11,7 +11,7 @@ namespace rtm {
 class HE2CWBVH
 {
 public:
-	const static uint WIDTH = 6;
+	const static uint WIDTH = 7;
 
 	struct alignas(64) Node
 	{
@@ -55,8 +55,8 @@ public:
 
 		if(preset == 1)
 		{
-			args.leaf_cost = sizeof(FTB) / sizeof(Node);
-			args.max_prims_collapse = 3;
+			args.leaf_cost = BVH::LINEAR;
+			args.max_prims_collapse = BVH::MAX_FTB;
 			args.collapse_method = BVH::DYNAMIC;
 		}
 
@@ -73,15 +73,6 @@ public:
 			args.max_prims_collapse = BVH::MAX_FTB;
 			args.collapse_method = BVH::GREEDY;
 			args.merge_leafs = false;
-		}
-
-		if(preset == 4)
-		{
-			args.leaf_cost = BVH::LINEAR;
-			args.max_prims_collapse = 1;
-			args.collapse_method = BVH::DYNAMIC;
-			args.merge_leafs = false;
-			args.merge_nodes = false;
 		}
 
 		rtm::BVH bvh(mesh, args);

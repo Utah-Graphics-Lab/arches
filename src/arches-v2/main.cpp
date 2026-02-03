@@ -154,7 +154,7 @@ static TRaXKernelArgs initilize_buffers(uint8_t* main_memory, paddr_t& heap_addr
 	if(args.pregen_rays)
 	{
 		std::string ray_file = scene_name + "-" + std::to_string(args.framebuffer_width) + "-" + std::to_string(pregen_bounce) + ".rays";
-	#if USE_HECWBVH
+	#if USE_HECWBVH_V1
 		pregen_rays(&bvh.nodes[0], &bvh.nodes[0].ftb, mesh, args.framebuffer_width, args.framebuffer_height, args.camera, pregen_bounce, rays);
 	#else
 		pregen_rays(&bvh.nodes[0], &bvh.ftbs[0], mesh, args.framebuffer_width, args.framebuffer_height, args.camera, pregen_bounce, rays);
@@ -164,7 +164,7 @@ static TRaXKernelArgs initilize_buffers(uint8_t* main_memory, paddr_t& heap_addr
 
 	args.nodes = write_vector(main_memory, 256, bvh.nodes, heap_address);
 
-#if USE_HECWBVH
+#if USE_HECWBVH_V1
 	args.ftbs = (rtm::FTB*)args.nodes;
 #else 
 	args.ftbs = write_vector(main_memory, 256, bvh.ftbs, heap_address);
