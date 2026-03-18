@@ -35,8 +35,8 @@ public:
 			uint32_t size = width * height;
 			texels = (Texel*)malloc(sizeof(Texel) * size);
 			for(uint32_t i = 0; i < size; ++i)
-				for(uint32_t j = 0; j < comp; ++j)
-					texels[i].channel[j] = data[i * comp + j];
+				for(uint32_t j = 0; j < 4; ++j)
+					texels[i].channel[j] = data[i * 4 + j];
 
 			stbi_image_free(data);
 			printf("Loaded: %s \n", filename.c_str());
@@ -51,18 +51,22 @@ public:
 	Texture2D(const Texture2D& other)
 	{
 		memcpy(this, &other, sizeof(Texture2D));
+		if (other.texels) {
 		uint32_t size = sizeof(Texel) * width * height;
 		texels = (Texel*)malloc(size);
 		memcpy(texels, other.texels, size);
+		}
 	}
 
 	Texture2D& operator=(const Texture2D& other)
 	{
 		if(texels) free(texels);
 		memcpy(this, &other, sizeof(Texture2D));
-		uint32_t size = sizeof(Texel) * width * height;
-		texels = (Texel*)malloc(size);
-		memcpy(texels, other.texels, size);
+		if (other.texels) {
+			uint32_t size = sizeof(Texel) * width * height;
+			texels = (Texel*)malloc(size);
+			memcpy(texels, other.texels, size);
+		}
 		return *this;
 	}
 

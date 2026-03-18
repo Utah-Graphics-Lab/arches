@@ -183,9 +183,11 @@ static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const
 	for(uint32_t i = 0; i < mesh.materials.size(); ++i)
 	{
 		Texture2D& tex = mesh.materials[i].albedo_texture;
-		Texture2D::Texel* dev_tex = write_array(drams, xbar, 256, tex.texels, tex.width * tex.height, heap_address);
-		free(tex.texels);
-		tex.texels = dev_tex;
+		if (tex.texels) {
+			Texture2D::Texel* dev_tex = write_array(drams, xbar, 256, tex.texels, tex.width * tex.height, heap_address);
+			free(tex.texels);
+			tex.texels = dev_tex;
+		}
 	}
 
 	args.materials = write_vector(drams, xbar, 256, mesh.materials, heap_address);
