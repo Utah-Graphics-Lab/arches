@@ -1,21 +1,51 @@
-cmake_minimum_required(VERSION 3.14)
+set(TRAX_SOURCES
+  "main.cpp"
+  "stbi.cpp"
+)
 
-set(PROJECT_NAME "trax-kernel")
+set(TRAX_HEADERS
+  "custom-instr.hpp"
+  "include.hpp"
+  "intersect.hpp"
+  "stdafx.hpp"
+)
 
-if(LINUX)
-    # enable intrinsics like _lzcnt_u64 - find this out
-    add_compile_options(-march=native)
-endif()
+add_executable(trax ${TRAX_SOURCES} ${TRAX_HEADERS})
 
-file(GLOB FILES *.hpp *.cpp)
-add_executable(${PROJECT_NAME} ${FILES})
-target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/trax-kernel)
-target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/include)
+set_target_properties(trax PROPERTIES
+  OUTPUT_NAME "trax"
+  FOLDER "Applications"
+  VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:trax>"
+  VS_DEBUGGER_COMMAND_ARGUMENTS "--scene-name=sponza --framebuffer-width=16 --framebuffer-height=16"
+)
 
-set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_BINARY_DIR})
-set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_BINARY_DIR})
-set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${PROJECT_NAME})
+arches_set_output_dirs(trax)
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/riscv)
-    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/riscv DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-endif()
+target_compile_features(trax PRIVATE cxx_std_20)
+
+file(TO_CMAKE_PATH "${ARCHES_DATASET_DIR}" ARCHES_DEFAULT_DATASET_DIR_CMAKE)
+target_compile_definitions(trax
+  PRIVATE
+    ARCHES_DEFAULT_DATASET_DIR="${ARCHES_DEFAULT_DATASET_DIR_CMAKE}"
+)
+
+target_compile_options(trax
+  PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
+    $<$<AND:$<PLATFORM_ID:Linux>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-march=native>
+)
+
+target_include_directories(trax
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${PROJECT_SOURCE_DIR}/include"
+)
+
+# stdc++fs: std::filesystem lives in a separate library on GCC < 9.
+target_link_libraries(trax
+  PRIVATE
+    Threads::Threads
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_LESS:$<CXX_COMPILER_VERSION>,9.0>>:stdc++fs>
+)
+
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${TRAX_SOURCES} ${TRAX_HEADERS})
