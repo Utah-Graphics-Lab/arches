@@ -4,6 +4,10 @@
 #include "intersect.hpp"
 #include "custom-instr.hpp"
 
+#ifndef __riscv
+#include "sim-config.hpp"
+#endif
+
 inline static uint32_t encode_pixel(rtm::vec3 in)
 {
 	in = rtm::clamp(in, 0.0f, 1.0f);
@@ -182,40 +186,32 @@ int main()
 }
 #else
 
-// #include <Windows.h>
 int main(int argc, char* argv[])
 {
-	uint pregen_bounce = 0;
-	std::string scene_name = argv[1];
+	//Same shared --key=value argument system and scene table as the arches
+	//simulator, so a native run and a simulated run are configured identically.
+	Arches::SimulationConfig sim_config;
+	sim_config.parse(argc, argv);
+
+	std::string scene_name = sim_config.get_string("scene-name");
+	std::string dataset_dir = sim_config.get_string("dataset-dir");
+	uint pregen_bounce = sim_config.get_int("pregen-bounce");
 
 	TRaXKernelArgs args;
-	args.framebuffer_width = 1920;
-	args.framebuffer_height = 1080;
+	args.framebuffer_width = sim_config.get_int("framebuffer-width");
+	args.framebuffer_height = sim_config.get_int("framebuffer-height");
 	args.framebuffer_size = args.framebuffer_width * args.framebuffer_height;
 	std::vector<uint32_t> fb_vec(args.framebuffer_size);
 	args.framebuffer = fb_vec.data();
 
-	args.pregen_rays = false;
+	args.pregen_rays = sim_config.get_int("pregen-rays");
 	//SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
 
 	args.light_dir = rtm::normalize(rtm::vec3(4.5f, 42.5f, 5.0f));
-	if(scene_name.compare("sibenik") == 0)
-		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(3.0, -13.0, 0.0), rtm::vec3(0, -12.0, 0));
-	if(scene_name.compare("crytek-sponza") == 0)
-		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(-900.6f, 150.8f, 120.74f), rtm::vec3(79.7f, 14.0f, -17.4f));
-	if(scene_name.compare("intel-sponza") == 0)
-		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(-900.6f, 150.8f, 120.74f), rtm::vec3(79.7f, 14.0f, -17.4f));
-	if(scene_name.compare("sponza") == 0)
-		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(0.0f, 2.0f, 0.0f), rtm::vec3(90.0f, 0.0f, -1.0f));
-	if(scene_name.compare("san-miguel") == 0)
-		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(7.448, 1.014, 12.357), rtm::vec3(7.448 + 0.608, 1.014 + 0.026, 12.357 - 0.794));
-	if(scene_name.compare("bistro") == 0)
-		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 12.0f, rtm::vec3(-8.0, 2.0, 2.0), rtm::vec3(0.0f, 1.0f, -1.0f));
-	if(scene_name.compare("hairball") == 0)
-		args.camera = rtm::Camera(args.framebuffer_width, args.framebuffer_height, 24.0f, rtm::vec3(0.0, 0.0, 10.0), rtm::vec3(0.0f, 0.0f, 0.0f));
+	args.camera = sim_config.camera;
 
-	std::string mesh_path = "datasets/" + scene_name + ".obj";
-	std::string bvh_cache_path = "datasets/cache/" + scene_name + ".bvh";
+	std::string mesh_path = dataset_dir + "/" + scene_name + ".obj";
+	std::string bvh_cache_path = dataset_dir + "/cache/" + scene_name + ".bvh";
 
 	rtm::Mesh mesh(mesh_path);
 
@@ -296,7 +292,7 @@ int main(int argc, char* argv[])
 	printf("\n\n");
 #endif
 	//6909.8 //5259.9
-	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str(), 2, false);
+	rtm::CWBVH bvh(mesh, bvh_cache_path.c_str(), sim_config.get_int("bvh-preset"), sim_config.get_int("bvh-merging"));
 	args.nodes = bvh.nodes.data();
 
 #if USE_HECWBVH_V1
@@ -356,7 +352,7 @@ int main(int argc, char* argv[])
 #endif
 
 	stbi_flip_vertically_on_write(true);
-	stbi_write_png("out.png", args.framebuffer_width, args.framebuffer_height, 4, args.framebuffer, 0);
+	stbi_write_png("trax_out.png", args.framebuffer_width, args.framebuffer_height, 4, args.framebuffer, 0);
 
 	return 0;
 }

@@ -1,6 +1,8 @@
 #pragma once
 #include "stdafx.hpp"
 
+#include <filesystem>
+
 #include "simulator/simulator.hpp"
 
 #include "units/unit-dram.hpp"
@@ -15,6 +17,7 @@
 #include "util/elf.hpp"
 #include "isa/riscv.hpp"
 #include "rtm/rtm.hpp"
+#include "sim-config.hpp"
 
 #if defined BUILD_PLATFORM_WINDOWS
 	#include <Windows.h>
@@ -31,12 +34,71 @@ void set_full_exe_name(const char *name) {
 	strcpy(full_exe_name, name);
 }
 
-std::string get_project_folder_path()
+static std::filesystem::path get_executable_path()
 {
-	// CHAR path[MAX_PATH];
-	// GetModuleFileNameA(NULL, path, MAX_PATH);
-	std::string executable_path(full_exe_name);
-	return executable_path.substr(0, executable_path.rfind("build"));
+	std::filesystem::path executable_path(full_exe_name);
+	if(executable_path.empty())
+		return std::filesystem::current_path();
+
+	if(executable_path.is_relative())
+		executable_path = std::filesystem::absolute(executable_path);
+
+	return executable_path.lexically_normal();
+}
+
+static std::filesystem::path get_executable_folder()
+{
+	std::filesystem::path executable_path = get_executable_path();
+	if(std::filesystem::is_directory(executable_path))
+		return executable_path;
+
+	return executable_path.parent_path();
+}
+
+static std::string normalize_path_string(const std::filesystem::path& path)
+{
+	return path.lexically_normal().generic_string();
+}
+
+static std::string ensure_trailing_slash(std::string path)
+{
+	for(char& c : path)
+	{
+		if(c == '\\')
+			c = '/';
+	}
+
+	while(path.size() > 1 && path.back() == '/')
+		path.pop_back();
+
+	if(!path.empty())
+		path += "/";
+
+	return path;
+}
+
+// CMake stages config-files/ and kernels/ next to the executable, so prefer those, otherwise use the source-tree paths baked in at configure time.
+std::string get_default_config_dir()
+{
+	std::filesystem::path runtime_config_dir = get_executable_folder() / "config-files";
+	if(std::filesystem::exists(runtime_config_dir))
+		return normalize_path_string(runtime_config_dir);
+
+	return normalize_path_string(std::filesystem::path(ARCHES_DEFAULT_CONFIG_DIR));
+}
+
+std::string get_default_kernel_path()
+{
+	std::filesystem::path runtime_kernel_path = get_executable_folder() / "kernels" / "trax" / "kernel";
+	if(std::filesystem::exists(runtime_kernel_path))
+		return normalize_path_string(runtime_kernel_path);
+
+	return normalize_path_string(std::filesystem::path(ARCHES_DEFAULT_KERNEL_PATH));
+}
+
+std::string join_path(std::string dir, const std::string& name)
+{
+	return ensure_trailing_slash(dir) + name;
 }
 
 template <typename T>
@@ -119,235 +181,5 @@ void print_header(std::string string, uint header_length = 80)
 	printf("\n");
 }
 
-const static std::vector<std::string> arch_names = {"TRaX", "STRaTA", "STRaTA-RT", "Dual-Streaming", "RIC"};
-
-
-struct SceneConfig
-{
-	std::string name;
-	rtm::vec3 cam_pos;
-	rtm::vec3 cam_target;
-	float focal_length;
-};
-
-const static std::vector<SceneConfig> scene_configs =
-{
-	{"cornell-box", rtm::vec3(0, 0.8, 1.8), rtm::vec3(0, 0.8, 0), 12.0f}, //CORNELLBOX
-
-	{"sibenik", rtm::vec3(3.0, -13.0, 0.0), rtm::vec3(0, -12.0, 0), 12.0f}, 
-
-	{"crytek-sponza", rtm::vec3(-900.6f, 150.8f, 120.74f), rtm::vec3(79.7f, 14.0f, -17.4f), 12.0f}, //CRYTEC SPONZA
-
-	{"bistro-interior", rtm::vec3(-0.813307f, 2.0811f, -1.28115f), rtm::vec3(-0.813307f + 1.0f, 2.0811f, -1.28115f), 24.0f}, //CRYTEC SPONZA
-
-	{"intel-sponza", rtm::vec3(-900.6f, 150.8f, 120.74f), rtm::vec3(79.7f, 14.0f, -17.4f), 12.0f}, //INTEL SPONZA
-	
-	{"sponza", rtm::vec3(0.0f, 2.0f, 0.0f), rtm::vec3(90.0f, 0.0f, -1.0f), 12.0f}, // SPONZA
-	
-	{"san-miguel", rtm::vec3(7.448, 1.014, 12.357), rtm::vec3(8.056, 1.04, 11.563), 12.0f}, //SAN_MIGUEL
-	
-	{"hairball", rtm::vec3(0, 0, 10), rtm::vec3(0, 0, 0), 24.0f}, //HAIRBALL
-
-	{"bistro", rtm::vec3(-8.0, 2.0, 2.0), rtm::vec3(0.0f, 1.0f, -1.0f), 12.0f}, //BISTRO
-};
-
-
-class SimulationConfig
-{
-public:
-	struct Param
-	{
-		enum Type
-		{
-			INT,
-			FLOAT,
-			STRING,
-		}
-		type;
-
-
-		union
-		{
-			int i;
-			float f;
-		};
-
-		std::string s;
-
-		Param() {};
-
-		Param(const Param& other)
-		{
-			*this = other;
-		}
-
-
-		Param& operator=(const Param& other)
-		{
-			type = other.type;
-			if(type == Param::Type::STRING)
-			{
-				s = std::string(other.s);
-			}
-			else
-			{
-				i = other.i;
-			}
-			return *this;
-		}
-
-		~Param()
-		{
-
-		}
-	};
-
-	rtm::Camera camera;
-
-private:
-	std::map<std::string, Param> _params;
-
-public:
-	SimulationConfig(int argc, char* argv[])
-	{
-		//Simulation
-		set_param("logging-interval", 10000);
-
-		//Arch
-		set_param("arch-name", "TRaX");
-		set_param("max-rays", 128);
-
-		//Workload
-		set_param("dataset-dir", "./datasets");
-		set_param("scene-name", "sponza");
-		set_param("framebuffer-width", 1024);
-		set_param("framebuffer-height", 1024);
-		set_param("pregen-rays", 0);
-		set_param("pregen-bounce", 1);
-		set_param("bvh-preset", 0);
-		set_param("bvh-merging", 0);
-
-		for(uint i = 1; i < argc; ++i)
-		{
-			std::string arg(argv[i]);
-			size_t start_pos = arg.find("--");
-			size_t split_pos = arg.find("=");
-			if(start_pos == std::string::npos || split_pos == std::string::npos) continue;
-
-			//--xxx=yyy
-			start_pos += 2;
-			std::string key = arg.substr(start_pos, split_pos - start_pos);
-			split_pos++;
-			std::string value = arg.substr(split_pos, arg.size() - split_pos);
-
-			parse_param(key, value);
-		}
-
-		set_param("arch-id", -1);
-		for(int i = 0; i < arch_names.size(); ++i)
-			if(get_string("arch-name").compare(arch_names[i]) == 0)
-				set_param("arch-id", i);
-		_assert(get_int("arch-id") != -1);
-
-		set_param("scene-id", -1);
-		for(int i = 0; i < scene_configs.size(); ++i)
-			if(get_string("scene-name").compare(scene_configs[i].name) == 0)
-				set_param("scene-id", i);
-		_assert(get_int("scene-id") != -1);
-
-		uint scene_id = get_int("scene-id");
-		camera = rtm::Camera(get_int("framebuffer-width"), get_int("framebuffer-height"), scene_configs[scene_id].focal_length, scene_configs[scene_id].cam_pos, scene_configs[scene_id].cam_target);
-
-		print();
-	}
-
-	int get_int(const std::string& key) const
-	{
-		const auto& a = _params.find(key);
-		_assert(a != _params.end());
-		_assert(a->second.type == Param::Type::INT);
-		return a->second.i;
-	}
-
-	float get_float(const std::string& key) const
-	{
-		const auto& a = _params.find(key);
-		_assert(a != _params.end());
-		_assert(a->second.type == Param::Type::FLOAT);
-		return a->second.f;
-	}
-
-	std::string get_string(const std::string& key) const
-	{
-		const auto& a = _params.find(key);
-		_assert(a != _params.end());
-		_assert(a->second.type == Param::Type::STRING);
-		return a->second.s;
-
-	}
-
-
-	void set_param(const std::string& key, int value)
-	{
-		_params[key].type = Param::Type::INT;
-		_params[key].i = value;
-	}
-
-	void set_param(const std::string& key, float value)
-	{
-		_params[key].type = Param::Type::FLOAT;
-		_params[key].f = value;
-	}
-
-	void set_param(const std::string& key, const std::string& value)
-	{
-		_params[key].type = Param::Type::STRING;
-		_params[key].s = std::string(value);
-	}
-
-	void parse_param(const std::string& key, const std::string& str)
-	{
-		if(_params.count(key))
-		{
-			if(_params[key].type == Param::Type::INT)
-			{
-				_params[key].i = std::stoi(str);
-			}
-			else if(_params[key].type == Param::Type::FLOAT)
-			{
-				_params[key].f = std::stof(str);
-			}
-			else if(_params[key].type == Param::Type::STRING)
-			{
-				_params[key].s = std::string(str);
-			}
-		}
-		else
-		{
-			printf("Invalid Parameter!!!: %s\n", key.c_str());
-		}
-	}
-
-	void print()
-	{
-		printf("Simulation Parameters\n");
-		for(std::pair<const std::string, Param>& a : _params)
-		{
-			if(a.second.type == Param::Type::INT)
-			{
-				printf("%s: %d\n", a.first.c_str(), a.second.i);
-			}
-			else if(a.second.type == Param::Type::FLOAT)
-			{
-				printf("%s: %f\n", a.first.c_str(), a.second.f);
-			}
-			else if(a.second.type == Param::Type::STRING)
-			{
-				printf("%s: %s\n", a.first.c_str(), a.second.s.c_str());
-			}
-		}
-		printf("\n");
-	}
-};
 
 }
