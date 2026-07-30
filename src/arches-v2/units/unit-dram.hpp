@@ -53,12 +53,17 @@ private:
 
 	struct MemoryController
 	{
-		LatencyFIFO<MemoryRequest> req_pipline;
+		//The controller interface is NUM_REQ_PIPLINES wide so it can keep up with the DRAM bus. Each
+		//pipline is a seperate path that is clocked once per cycle, so the width sets throughput
+		//without scaling the modeled L2 to controller latency.
+		const static uint NUM_REQ_PIPLINES = 2;
+
+		std::vector<LatencyFIFO<MemoryRequest>> req_piplines;
 		Ramulator::IFrontEnd* ramulator2_frontend;
 		Ramulator::IMemorySystem* ramulator2_memorysystem;
 		std::priority_queue<RamulatorReturn> return_queue;
 
-		MemoryController(uint latency) : req_pipline(latency) {}
+		MemoryController(uint latency) : req_piplines(NUM_REQ_PIPLINES, LatencyFIFO<MemoryRequest>(latency)) {}
 	};
 
 	uint _pending_requests = 0;

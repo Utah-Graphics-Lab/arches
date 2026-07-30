@@ -122,14 +122,18 @@ private:
 	std::set<uint> _free_ray_ids;
 	std::vector<RayState> _ray_states;
 
+	//number of parallel intersection piplines. Each pipline is a seperate unit that is clocked
+	//once per cycle, so widening this changes throughput without changing the modeled latency.
+	const static uint NUM_ISECT_PIPLINES = 2;
+
 	//node pipline
 	std::queue<uint> _node_isect_queue;
-	LatencyFIFO<uint> _box_pipline;
+	std::vector<LatencyFIFO<uint>> _box_piplines;
 	uint _box_issue_count{0};
 
 	//tri pipline
 	std::queue<uint> _tri_isect_queue;
-	LatencyFIFO<uint> _tri_pipline;
+	std::vector<LatencyFIFO<uint>> _tri_piplines;
 	uint _tri_issue_count{0};
 
 	//meta data
@@ -191,8 +195,14 @@ private:
 	void _read_requests();
 	void _read_returns();
 	void _schedule_ray();
-	void _simualte_node_pipline();
-	void _simualte_tri_pipline();
+
+	//The issue half runs once per issue slot (NUM_ISECT_PIPLINES times per cycle). The retire half
+	//clocks each pipline exactly once per cycle. Keeping these seperate is what stops the issue
+	//width from also scaling the modeled pipline latency.
+	void _issue_node_isect(uint pipline_index);
+	void _issue_tri_isect(uint pipline_index);
+	void _retire_node_isect(uint pipline_index);
+	void _retire_tri_isect(uint pipline_index);
 
 	void _issue_requests();
 	void _issue_returns();
