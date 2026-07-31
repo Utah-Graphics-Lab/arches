@@ -13,7 +13,8 @@ template<typename NT, typename PT>
 UnitRTCore<NT, PT>::UnitRTCore(const Configuration& config) :
 	_max_rays(config.max_rays), _node_base_addr(config.node_base_addr), _tri_base_addr(config.tri_base_addr), _vrt_base_addr(config.vrt_base_addr),
 	_cache(config.cache), _request_network(config.num_clients, 1), _return_network(1, config.num_clients),
-	_box_pipline(12), _tri_pipline(22), _cache_port(config.cache_port), _cache_port_stride(config.cache_port_stride)
+	_box_piplines(NUM_ISECT_PIPLINES, LatencyFIFO<uint>(12)), _tri_piplines(NUM_ISECT_PIPLINES, LatencyFIFO<uint>(22)), 
+	_cache_port(config.cache_port), _cache_port_stride(config.cache_port_stride)
 {
 	_ray_states.resize(config.max_rays);
 	for(uint i = 0; i < _ray_states.size(); ++i)
@@ -32,11 +33,18 @@ void UnitRTCore<NT, PT>::clock_rise()
 	_read_returns();
 
 	//n stack ops per cycle. In reality this would need to be multi banked
-	for(uint i = 0; i < 2; ++i)
+	for(uint i = 0; i < NUM_ISECT_PIPLINES; ++i)
 	{
 		_schedule_ray();
-		_simualte_node_pipline();
-		_simualte_tri_pipline();
+		_issue_node_isect(i);
+		_issue_tri_isect(i);
+	}
+
+	//advance pipeline exactly once per cycle 
+	for (uint i = 0; i < NUM_ISECT_PIPLINES; ++i)
+	{
+		_retire_node_isect(i);
+		_retire_tri_isect(i);
 	}
 }
 
@@ -342,8 +350,9 @@ void UnitRTCore<NT, PT>::_schedule_ray()
 }
 
 template<typename NT, typename PT>
-void UnitRTCore<NT, PT>::_simualte_node_pipline()
+void UnitRTCore<NT, PT>::_issue_node_isect(uint pipline_index)
 {
+	LatencyFIFO<uint>& _box_pipline = _box_piplines[pipline_index];
 	if(!_node_isect_queue.empty() && _box_pipline.is_write_valid())
 	{
 		_stall_cycles = 0;
@@ -426,6 +435,12 @@ void UnitRTCore<NT, PT>::_simualte_node_pipline()
 			_box_pipline.write(~0);
 		}
 	}
+}
+
+template<typename NT, typename PT>
+void UnitRTCore<NT, PT>::_retire_node_isect(uint pipline_index)
+{
+	LatencyFIFO<uint>& _box_pipline = _box_piplines[pipline_index];
 
 	_box_pipline.clock();
 
@@ -442,8 +457,9 @@ void UnitRTCore<NT, PT>::_simualte_node_pipline()
 }
 
 template<typename NT, typename PT>
-void UnitRTCore<NT, PT>::_simualte_tri_pipline()
+void UnitRTCore<NT, PT>::_issue_tri_isect(uint pipline_index)
 {
+	LatencyFIFO<uint>& _tri_pipline = _tri_piplines[pipline_index];
 	if(!_tri_isect_queue.empty() && _tri_pipline.is_write_valid())
 	{
 		_stall_cycles = 0;
@@ -476,6 +492,12 @@ void UnitRTCore<NT, PT>::_simualte_tri_pipline()
 			_tri_pipline.write(~0u);
 		}
 	}
+}
+
+template<typename NT, typename PT>
+void UnitRTCore<NT, PT>::_retire_tri_isect(uint pipline_index)
+{
+	LatencyFIFO<uint>& _tri_pipline = _tri_piplines[pipline_index];
 
 	_tri_pipline.clock();
 
