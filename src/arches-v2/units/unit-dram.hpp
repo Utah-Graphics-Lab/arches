@@ -28,6 +28,7 @@ public:
 		uint latency{1};
 		uint num_ports{1};
 		uint num_controllers{1};
+		uint num_req_piplines{2};
 		uint64_t partition_stride{0x0ull};
 		double clock_ratio{4.0f};
 	};
@@ -46,19 +47,15 @@ private:
 
 	struct MemoryController
 	{
-		//controller interface is NUM_REQ_PIPLINES wide so it can keep up with the DRAM bus
-		//each pipline is a seperate path that is clocked once per cycle, so the width sets throughput without scaling the modeled L2 to controller latency.
-
-		const static uint NUM_REQ_PIPLINES = 2;
-
 		std::vector<LatencyFIFO<MemoryRequest>> req_piplines;
 		Ramulator::IFrontEnd* ramulator2_frontend;
 		Ramulator::IMemorySystem* ramulator2_memorysystem;
 		std::priority_queue<RamulatorReturn> return_queue;
 
-		MemoryController(uint latency) : req_piplines(NUM_REQ_PIPLINES, LatencyFIFO<MemoryRequest>(latency)) {}
+		MemoryController(uint latency, uint num_piplines) : req_piplines(num_piplines, LatencyFIFO<MemoryRequest>(latency)) {}
 	};
 
+	uint _num_req_piplines{2};
 	uint _pending_requests = 0;
 	bool _busy{false};
 

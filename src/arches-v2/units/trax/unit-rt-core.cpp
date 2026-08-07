@@ -13,7 +13,9 @@ template<typename NT, typename PT>
 UnitRTCore<NT, PT>::UnitRTCore(const Configuration& config) :
 	_max_rays(config.max_rays), _node_base_addr(config.node_base_addr), _tri_base_addr(config.tri_base_addr), _vrt_base_addr(config.vrt_base_addr),
 	_cache(config.cache), _request_network(config.num_clients, 1), _return_network(1, config.num_clients),
-	_box_piplines(NUM_ISECT_PIPLINES, LatencyFIFO<uint>(12)), _tri_piplines(NUM_ISECT_PIPLINES, LatencyFIFO<uint>(22)), 
+	_num_isect_piplines(config.num_isect_piplines),
+	_box_piplines(config.num_node_piplines, LatencyFIFO<uint>(config.node_pipline_latency)),
+	_tri_piplines(config.num_tri_piplines, LatencyFIFO<uint>(config.tri_pipline_latency)),
 	_cache_port(config.cache_port), _cache_port_stride(config.cache_port_stride)
 {
 	_ray_states.resize(config.max_rays);
@@ -33,18 +35,21 @@ void UnitRTCore<NT, PT>::clock_rise()
 	_read_returns();
 
 	//n stack ops per cycle. In reality this would need to be multi banked
-	for(uint i = 0; i < NUM_ISECT_PIPLINES; ++i)
+	// Splot i feeds pipeline i, so the pipelines are fed in lockstep and stay balanced 
+	uint issue_slots = std::max({_num_isect_piplines, (uint)_box_piplines.size(), (uint)_tri_piplines.size()});
+	for(uint i = 0; i < issue_slots; ++i)
 	{
-		_schedule_ray();
-		_issue_node_isect(i);
-		_issue_tri_isect(i);
+		if(i < _num_isect_piplines)  _schedule_ray();
+		if(i < _box_piplines.size()) _issue_node_isect(i);
+		if(i < _tri_piplines.size()) _issue_tri_isect(i);
 	}
 
 	//advance pipeline exactly once per cycle 
-	for (uint i = 0; i < NUM_ISECT_PIPLINES; ++i)
+	uint retire_slots = std::max((uint)_box_piplines.size(), (uint)_tri_piplines.size());
+	for(uint i = 0; i < retire_slots; ++i)
 	{
-		_retire_node_isect(i);
-		_retire_tri_isect(i);
+		if(i < _box_piplines.size()) _retire_node_isect(i);
+		if(i < _tri_piplines.size()) _retire_tri_isect(i);
 	}
 }
 

@@ -5,15 +5,18 @@ namespace Arches { namespace Units {
 #define ENABLE_DRAM_DEBUG_PRINTS 0
 
 UnitDRAMRamulator::UnitDRAMRamulator(Configuration config) : UnitMainMemoryBase(config.size),
-	_request_network(config.num_ports, config.num_controllers * MemoryController::NUM_REQ_PIPLINES, 1 << 13), 
-	_return_network(config.num_controllers * MemoryController::NUM_REQ_PIPLINES, config.num_ports), 
+	_request_network(config.num_ports, config.num_controllers * config.num_req_piplines, 1 << 13),
+	_return_network(config.num_controllers * config.num_req_piplines, config.num_ports),
 	_partition_mask(config.partition_stride)
 {
 	YAML::Node yaml = Ramulator::Config::parse_config_file(config.config_path, {});
 
-	_controllers.resize(config.num_controllers, config.latency);
+	_num_req_piplines = config.num_req_piplines;
+
+	_controllers.reserve(config.num_controllers);
 	for(uint i = 0; i < config.num_controllers; ++i)
 	{
+		_controllers.emplace_back(config.latency, config.num_req_piplines);
 		_controllers[i].ramulator2_frontend = Ramulator::Factory::create_frontend(yaml);
 		_controllers[i].ramulator2_memorysystem = Ramulator::Factory::create_memory_system(yaml);
 
@@ -141,8 +144,8 @@ void UnitDRAMRamulator::clock_rise()
 	bool busy = _pending_requests > 0;
 	for(uint i = 0; i < _request_network.num_sinks(); ++i)
 	{
-		uint controller_index = i / MemoryController::NUM_REQ_PIPLINES;
-		uint pipline_index = i % MemoryController::NUM_REQ_PIPLINES;
+		uint controller_index = i / _num_req_piplines;
+		uint pipline_index = i % _num_req_piplines;
 		LatencyFIFO<MemoryRequest>& req_pipline = _controllers[controller_index].req_piplines[pipline_index];
 
 		if(_request_network.is_read_valid(i) && req_pipline.is_write_valid())
@@ -205,12 +208,12 @@ void UnitDRAMRamulator::clock_fall()
 	{
 		MemoryController& controller = _controllers[controller_index];
 		
-		//drain up to NUM_REQ_PIPLINES returns per cycle so return path is as wide as the request path.
-		for (uint k = 0; k < MemoryController::NUM_REQ_PIPLINES; ++k)
+		//drain up to num_req_piplines returns per cycle so return path is as wide as the request path.
+		for (uint k = 0; k < _num_req_piplines; ++k)
 		{
 			if (controller.return_queue.empty()) break;
 
-			uint source_index = controller_index * MemoryController::NUM_REQ_PIPLINES + k;
+			uint source_index = controller_index * _num_req_piplines + k;
 			const RamulatorReturn& ramulator_return = controller.return_queue.top();
 			const MemoryReturn& ret = _returns[ramulator_return.return_id];
 			if(_return_network.is_write_valid(source_index))
