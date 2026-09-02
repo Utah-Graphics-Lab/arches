@@ -20,7 +20,7 @@ City features).
 
 You can find the details about our design decisions for developing Arches on its [Project Page](https://graphics.cs.utah.edu/research/projects/arches/), where you will find the related publication:
 
-> Jacob Haydel, Gaurav Bhokare, Kunnong Zeng, Pengpei Hong, Sushant Kondguli, Brian Budge, Erik Brunvand, & Cem Yuksel. (2025). Arches: [A Cycle Level Simulator for Exploring Massively Parallel Ray Tracing Architectures](https://graphics.cs.utah.edu/research/projects/arches/arches-hpg2025.pdf). *Computer Graphics Forum (Proceedings of HPG 2025)*, 44(8)
+> Jacob Haydel, Gaurav Bhokare, Kunnong Zeng, Pengpei Hong, Sushant Kondguli, Brian Budge, Erik Brunvand, & Cem Yuksel. (2025). Arches: [A Cycle Level Simulator for Exploring Massively Parallel Ray Tracing Architectures](https://graphics.cs.utah.edu/research/projects/arches/arches-hpg2025-cgf.pdf). *Computer Graphics Forum (Proceedings of HPG 2025)*, 44(8)
 
 ## Setup (Simulator)
 To clone and build the project, simply run the following commands:
