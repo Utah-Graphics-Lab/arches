@@ -219,7 +219,7 @@ static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const
 	for(uint32_t i = 0; i < mesh.materials.size(); ++i)
 		mesh.materials[i].albedo_texture.texels = nullptr;  // to not free device memory textures
 
-	size_t temp = TRAX_KERNEL_ARGS_ADDRESS;
+	paddr_t temp = TRAX_KERNEL_ARGS_ADDRESS;
 	write_array(drams, xbar, 256, (uint8_t*)&args, sizeof(TRaXKernelArgs), temp);
 	return args;
 }
@@ -227,6 +227,7 @@ static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const
 static void run_sim_trax(SimulationConfig& sim_config)
 {
 	std::string project_folder_path = get_project_folder_path();
+	std::string project_binary_path = get_project_binary_path();
 
 #if 0 //RTX 4090 ish
 	//Compute
@@ -244,7 +245,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = project_folder_path + "build\\src\\arches-v2\\config-files\\gddr6x_21000_config.yaml";
+	dram_config.config_path = project_binary_path + "config-files/gddr6x_21000_config.yaml";
 	dram_config.size = 1ull << 30; //1GB per partition
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 254;
@@ -305,7 +306,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = project_folder_path + "build\\src\\arches-v2\\config-files\\gddr6_14000_config.yaml";
+	dram_config.config_path = project_binary_path + "config-files/gddr6_14000_config.yaml";
 	dram_config.size = 1ull << 30; //1GB per partition
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 254;
@@ -375,7 +376,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = project_folder_path + "build/src/arches-v2/config-files/gddr6_14000_config.yaml";
+	dram_config.config_path = project_binary_path + "config-files/gddr6_14000_config.yaml";
 	dram_config.size = 1ull << 30; //1GB
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 92;
@@ -433,7 +434,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = project_folder_path + "build\\src\\arches-v2\\config-files\\gddr6_pch_config.yaml";
+	dram_config.config_path = project_binary_path + "config-files/gddr6_pch_config.yaml";
 	dram_config.size = 1ull << 30; //1GB
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 1;

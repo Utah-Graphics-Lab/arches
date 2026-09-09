@@ -3,7 +3,7 @@ add_compile_definitions(UNICODE _UNICODE)
 
 set(PROJECT_NAME "arches-v2")
 
-if(LINUX)
+if(LINUX AND NOT APPLE)
   # enable intrinsics like _lzcnt_u64
   add_compile_options(-march=native)
 endif()
@@ -61,10 +61,18 @@ set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
 if(WINDOWS)
   target_link_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/libraries/tbb)
   target_link_libraries(${PROJECT_NAME} PRIVATE tbb12.lib)
+elseif(APPLE)
+  execute_process(COMMAND brew --prefix tbb OUTPUT_VARIABLE TBB_BREW_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
+  target_include_directories(${PROJECT_NAME} PUBLIC ${TBB_BREW_PREFIX}/include)
+  target_link_directories(${PROJECT_NAME} PUBLIC ${TBB_BREW_PREFIX}/lib)
+  target_link_libraries(${PROJECT_NAME} PRIVATE tbb)
 elseif(LINUX)
   target_link_libraries(${PROJECT_NAME} PRIVATE tbb)
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE Ramulator)
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+  ARCHES_SOURCE_DIR="${CMAKE_SOURCE_DIR}/"
+  ARCHES_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}/")
 #set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_BINARY_DIR})
 #set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${PROJECT_NAME})

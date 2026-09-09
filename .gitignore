@@ -423,3 +423,11 @@ out/
 datasets/
 
 ext/
+
+# macOS Ignores
+.DS_Store
+
+# CLion Ignores
+.idea
+cmake-build*
+

@@ -19,6 +19,9 @@
 #if defined BUILD_PLATFORM_WINDOWS
 	#include <Windows.h>
 	#define MAX_FILENAME_LENGTH MAX_PATH
+#elif defined BUILD_PLATFORM_MACOS
+	#include <climits>
+	#define MAX_FILENAME_LENGTH PATH_MAX
 #elif defined BUILD_PLATFORM_LINUX
 	#include <linux/limits.h>
 	#define MAX_FILENAME_LENGTH FILENAME_MAX
@@ -33,10 +36,12 @@ void set_full_exe_name(const char *name) {
 
 std::string get_project_folder_path()
 {
-	// CHAR path[MAX_PATH];
-	// GetModuleFileNameA(NULL, path, MAX_PATH);
-	std::string executable_path(full_exe_name);
-	return executable_path.substr(0, executable_path.rfind("build"));
+	return ARCHES_SOURCE_DIR;
+}
+
+std::string get_project_binary_path()
+{
+	return ARCHES_BINARY_DIR;
 }
 
 template <typename T>

@@ -2,6 +2,8 @@
 
 #if defined BUILD_PLATFORM_WINDOWS
 	#include <intrin.h>
+#elif defined __aarch64__
+	#include <cmath>
 #elif defined BUILD_PLATFORM_LINUX
 	#include <immintrin.h>
 #endif
@@ -695,15 +697,27 @@ InstructionInfo const isa_OP_FP[32] = //r.funct5
 	InstructionInfo(0b010'10, IMPL_NONE),
 	InstructionInfo(0b010'11, "fsqrt.s", InstrType::FSQRT, Encoding::R, RegFile::FLOAT, EXEC_DECL 
 	{
+#if defined __aarch64__
+		unit->float_regs->registers[instr.r.rd].f32 = std::sqrt(unit->float_regs->registers[instr.r.rs1].f32);
+#else
 		unit->float_regs->registers[instr.r.rd].f32 = _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ps1(unit->float_regs->registers[instr.r.rs1].f32)));
+#endif
 	}),
 	InstructionInfo(0b011'00, "fisqrt.s", InstrType::FSQRT, Encoding::R, RegFile::FLOAT, EXEC_DECL
 	{
+#if defined __aarch64__
+		unit->float_regs->registers[instr.r.rd].f32 = 1.0f / std::sqrt(unit->float_regs->registers[instr.r.rs1].f32);
+#else
 		unit->float_regs->registers[instr.r.rd].f32 = _mm_cvtss_f32(_mm_rsqrt_ps(_mm_set_ps1(unit->float_regs->registers[instr.r.rs1].f32)));
+#endif
 	}),
 	InstructionInfo(0b011'01, "frcp.s", InstrType::FRCP, Encoding::R, RegFile::FLOAT, EXEC_DECL
 	{
+#if defined __aarch64__
+		unit->float_regs->registers[instr.r.rd].f32 = 1.0f / unit->float_regs->registers[instr.r.rs1].f32;
+#else
 		unit->float_regs->registers[instr.r.rd].f32 = _mm_cvtss_f32(_mm_rcp_ss(_mm_set_ps1(unit->float_regs->registers[instr.r.rs1].f32)));
+#endif
 	}),
 	InstructionInfo(0b011'10, IMPL_NONE),
 	InstructionInfo(0b011'11, IMPL_NONE),

@@ -7,5 +7,9 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+add_compile_definitions(FMT_CONSTEVAL=constexpr)
+
+set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+
 add_subdirectory(external)
 add_subdirectory("src")

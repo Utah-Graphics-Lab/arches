@@ -303,7 +303,7 @@ public:
 				vertex_indices.emplace_back(0);
 				tex_coord_indices.emplace_back(~0x0u);
 				normal_indices.emplace_back(~0x0u);
-				material_indices.emplace_back(material_names.size() - 1u);
+				material_indices.emplace_back(material_names.empty() ? 0u : (uint)(material_names.size() - 1u));
 				read_face(line + data_start_index, vertex_indices.back(), tex_coord_indices.back(), normal_indices.back());
 				break;
 

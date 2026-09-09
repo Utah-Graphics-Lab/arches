@@ -1,5 +1,5 @@
 #include "registers.hpp"
-
+#include <cfenv>
 
 namespace Arches { namespace ISA { namespace RISCV {
 
@@ -19,6 +19,22 @@ FloatingPointRegisterFile::FloatingPointRegisterFile()
 {
 	fcsr.data = 0u;
 	//Make rounding mode match simulator rounding mode
+#if defined BUILD_ARCH_aarch64
+	switch (fegetround()) {
+	case FE_TONEAREST:
+		fcsr.frm = 0b000;
+		break;
+	case FE_DOWNWARD:
+		fcsr.frm = 0b010;
+		break;
+	case FE_UPWARD:
+		fcsr.frm = 0b011;
+		break;
+	case FE_TOWARDZERO:
+		fcsr.frm = 0b001;
+		break;
+	}
+#else
 	switch ((_mm_getcsr() >> 13) & 0b11) {
 	case 0b00: //nearest (even)
 		fcsr.frm = 0b000;
@@ -33,6 +49,7 @@ FloatingPointRegisterFile::FloatingPointRegisterFile()
 		fcsr.frm = 0b001;
 		break;
 	}
+#endif
 
 	for (int i = 0; i < sizeof(valid); ++i) valid[i] = true;
 }
