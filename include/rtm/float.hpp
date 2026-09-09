@@ -7,13 +7,15 @@
 #include <cmath>
 	#if defined BUILD_PLATFORM_WINDOWS
 		#include <intrin.h>
+	#elif defined __aarch64__
+		#include <arm_neon.h>
 	#elif defined BUILD_PLATFORM_LINUX
 		#include <immintrin.h>
 	#endif
 #include <cfenv>
 #endif
 
-#ifdef BUILD_PLATFORM_LINUX
+#if defined BUILD_PLATFORM_LINUX && !defined __aarch64__
 	// Declarations of intrinsics used that are defined but not declared in immintrin
 	extern __m128 _mm_cos_ps(__m128 __A);
 	extern __m128 _mm_sin_ps(__m128 __A);
@@ -51,6 +53,8 @@ inline float sqrt(float input)
     float output;
 	asm volatile ("fsqrt.s %0, %1\n\t" : "=f" (output) : "f" (input));
 	return output;
+    #elif defined __aarch64__
+	return std::sqrt(input);
     #else
 	return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ps1(input)));
 	#endif
@@ -62,6 +66,8 @@ inline float rsqrt(float input)
 	float output;
 	asm volatile ("frsqrt.s %0, %1\n\t" : "=f" (output) : "f" (input));
 	return output;
+	#elif defined __aarch64__
+	return 1.0f / std::sqrt(input);
 	#else
 	return _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ps1(input)));
 	#endif
@@ -73,6 +79,8 @@ inline float rcp(float input)
 	float output;
 	asm volatile ("frcp.s %0, %1\n\t" : "=f" (output) : "f" (input));
 	return output;
+	#elif defined __aarch64__
+	return 1.0f / input;
 	#else
 	return _mm_cvtss_f32(_mm_rcp_ss(_mm_set_ps1(input)));
 	#endif
@@ -124,6 +132,8 @@ inline float cos(float input)
 {
 	#ifdef __riscv
 	return cos_32(input);
+	#elif defined __aarch64__
+	return std::cos(input);
 	#else
 	return _mm_cvtss_f32(_mm_cos_ps(_mm_set_ps1(input)));
 	#endif
@@ -133,6 +143,8 @@ inline float sin(float input)
 {
 	#ifdef __riscv
 	return sin_32(input);
+	#elif defined __aarch64__
+	return std::sin(input);
 	#else
 	return _mm_cvtss_f32(_mm_sin_ps(_mm_set_ps1(input)));
 	#endif

@@ -106,7 +106,7 @@ public:
 
 		if(unit == nullptr) return;
 
-		MemoryMapping mapping = {unit, port_id, num_ports, 0};
+		MemoryMapping mapping = {unit, static_cast<uint16_t>(port_id), static_cast<uint16_t>(num_ports), 0};
 
 		uint j;
 		for(j = 0; j < mappings.size(); ++j)

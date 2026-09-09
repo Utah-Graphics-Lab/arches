@@ -104,8 +104,9 @@ public:
 
 	rtm::vec2 get_fract_uv(const rtm::vec2& uv) const
 	{
-		rtm::vec2 fuv = uv * rtm::vec2(width, height);
-		return (fuv - rtm::vec2((int32_t)fuv[0], (int32_t)fuv[1]));
+		rtm::vec2 wrapped_uv(uv[0] - floorf(uv[0]), uv[1] - floorf(uv[1]));
+		rtm::vec2 fuv = wrapped_uv * rtm::vec2(width, height);
+		return rtm::vec2(fuv[0] - floorf(fuv[0]), fuv[1] - floorf(fuv[1]));
 	}
 
 	Texel* get_texel_addr(const rtm::uvec2& iuv) const
