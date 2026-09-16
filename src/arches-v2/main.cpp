@@ -142,6 +142,7 @@ const static InstructionInfo custom0(CUSTOM_OPCODE0, META_DECL{return isa_custom
 namespace TRaX {
 
 typedef Units::UnitDRAMRamulator UnitDRAM;
+typedef Units::UnitCache UnitL3Cache;
 typedef Units::UnitCache UnitL2Cache;
 typedef Units::UnitCache UnitL1Cache;
 typedef rtm::FTB PrimBlocks;
@@ -244,32 +245,48 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = project_folder_path + "build\\src\\arches-v2\\config-files\\gddr6x_21000_config.yaml";
+	dram_config.config_path = get_config_folder_path() + "gddr6x_21000_config.yaml";
 	dram_config.size = 1ull << 30; //1GB per partition
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 254;
 
-	//L2$
-	UnitL2Cache::Configuration l2_config;
-	l2_config.level = 2;
-	l2_config.block_prefetch = true;
-	l2_config.miss_alloc = true;
-	l2_config.size = 6 << 20;
-	l2_config.associativity = 16;
-	l2_config.policy = Units::UnitCacheBase::Policy::LRU;
-	l2_config.num_slices = 6;
-	l2_config.crossbar_width = l2_config.num_slices;
-	l2_config.num_mshr = 256;
-	l2_config.num_subentries = 4;
-	l2_config.latency = 187;
+	//L3$
+	UnitL3Cache::Configuration l3_config;
+	l3_config.level = 3;
+	l3_config.block_prefetch = true;
+	l3_config.miss_alloc = true;
+	l3_config.size = 6 << 20;
+	l3_config.associativity = 16;
+	l3_config.policy = Units::UnitCacheBase::Policy::LRU;
+	l3_config.num_slices = 6;
+	l3_config.crossbar_width = l3_config.num_slices;
+	l3_config.num_mshr = 256;
+	l3_config.num_subentries = 4;
+	l3_config.latency = 480;
+
+	UnitL3Cache::PowerConfig l3_power_config;
+
+    //L2$
+    UnitL2Cache::Configuration l2_config;
+    l2_config.level = 2;
+    l2_config.block_prefetch = true;
+    l2_config.miss_alloc = true;
+    l2_config.size = 6 << 20;
+    l2_config.associativity = 16;
+    l2_config.policy = Units::UnitCacheBase::Policy::LRU;
+    l2_config.num_banks = 6;
+    l2_config.crossbar_width = l2_config.num_banks;
+    l2_config.num_mshr = 256;
+    l2_config.num_subentries = 4;
+    l2_config.latency = 187;
 
 	UnitL2Cache::PowerConfig l2_power_config;
 
-	Units::UnitCrossbar::Configuration xbar_config;
-	xbar_config.num_slices = l2_config.num_slices;
-	xbar_config.slice_stride = l2_config.block_size;
-	xbar_config.num_partitions = num_partitions;
-	xbar_config.partition_stride = partition_stride;
+    Units::UnitCrossbar::Configuration xbar_config;
+    xbar_config.num_slices = l3_config.num_slices;
+    xbar_config.slice_stride = l3_config.block_size;
+    xbar_config.num_partitions = num_partitions;
+    xbar_config.partition_stride = partition_stride;
 
 	//L1d$
 	UnitL1Cache::Configuration l1d_config;
@@ -305,31 +322,46 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = project_folder_path + "build\\src\\arches-v2\\config-files\\gddr6_14000_config.yaml";
+	dram_config.config_path = get_config_folder_path() + "gddr6_14000_config.yaml";
 	dram_config.size = 1ull << 30; //1GB per partition
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 254;
 
-	//L2$
-	UnitL2Cache::Configuration l2_config;
-	l2_config.level = 2;
-	l2_config.miss_alloc = true;
-	l2_config.size = 512 << 10;
-	l2_config.associativity = 16;
-	l2_config.policy = Units::UnitCacheBase::Policy::LRU;
-	l2_config.num_slices = 4;
-	l2_config.crossbar_width = l2_config.num_slices;
-	l2_config.num_mshr = 192;
-	l2_config.num_subentries = 4;
-	l2_config.latency = 187;
+	//L3$
+	UnitL3Cache::Configuration l3_config;
+	l3_config.level = 3;
+	l3_config.miss_alloc = true;
+	l3_config.size = 512 << 10;
+	l3_config.associativity = 16;
+	l3_config.policy = Units::UnitCacheBase::Policy::LRU;
+	l3_config.num_slices = 4;
+	l3_config.crossbar_width = l3_config.num_slices;
+	l3_config.num_mshr = 192;
+	l3_config.num_subentries = 4;
+	l3_config.latency = 480;
+
+	UnitL3Cache::PowerConfig l3_power_config;
+
+    //L2$
+    UnitL2Cache::Configuration l2_config;
+    l2_config.level = 2;
+    l2_config.miss_alloc = true;
+    l2_config.size = 512 << 10;
+    l2_config.associativity = 16;
+    l2_config.policy = Units::UnitCacheBase::Policy::LRU;
+	l2_config.num_banks = 4;
+    l2_config.crossbar_width = l2_config.num_banks;
+    l2_config.num_mshr = 192;
+    l2_config.num_subentries = 4;
+    l2_config.latency = 187;
 
 	UnitL2Cache::PowerConfig l2_power_config;
 
-	Units::UnitCrossbar::Configuration xbar_config;
-	xbar_config.num_slices = l2_config.num_slices;
-	xbar_config.slice_stride = l2_config.block_size;
-	xbar_config.num_partitions = num_partitions;
-	xbar_config.partition_stride = partition_stride;
+    Units::UnitCrossbar::Configuration xbar_config;
+    xbar_config.num_slices = l3_config.num_slices;
+    xbar_config.slice_stride = l3_config.block_size;
+    xbar_config.num_partitions = num_partitions;
+    xbar_config.partition_stride = partition_stride;
 
 	//L1d$
 	UnitL1Cache::Configuration l1d_config;
@@ -352,11 +384,11 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 #elif 1 //Turing spec
 #if 1 //RTX 2080
-	double core_clock = 1515.0e6;
-	uint num_threads = 8;
-	uint num_tps = 64;
-	uint num_tms = 46;
-	uint64_t stack_size = 1024;
+    double core_clock = 1515.0e6;
+    uint num_threads = 8;
+    uint num_tps = 64;
+    uint num_tms = 64;// 46;
+    uint64_t stack_size = 1024;
 
 	double dram_clock = 3500.0e6;
 	uint num_partitions = 8;
@@ -375,30 +407,45 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = project_folder_path + "build/src/arches-v2/config-files/gddr6_14000_config.yaml";
+	dram_config.config_path = get_config_folder_path() + "gddr6_14000_config.yaml";
 	dram_config.size = 1ull << 30; //1GB
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 92;
 
-	//L2$
-	UnitL2Cache::Configuration l2_config;
-	l2_config.level = 2;
-	l2_config.miss_alloc = true;
-	l2_config.size = 512 << 10;
-	l2_config.associativity = 16;
-	l2_config.num_slices = 4;
-	l2_config.crossbar_width = l2_config.num_slices;
-	l2_config.num_mshr = 192;
-	l2_config.num_subentries = 4;
-	l2_config.latency = 160;
+	//L3$
+	UnitL3Cache::Configuration l3_config;
+	l3_config.level = 3;
+	l3_config.miss_alloc = true;
+	l3_config.size = 512 << 10;
+	l3_config.associativity = 16;
+	l3_config.num_slices = 4;
+	l3_config.crossbar_width = l3_config.num_slices;
+	l3_config.num_mshr = 192;
+	l3_config.num_subentries = 4;
+	l3_config.latency = 480;
+
+	UnitL3Cache::PowerConfig l3_power_config;
+
+    //L2$
+    UnitL2Cache::Configuration l2_config;
+    l2_config.level = 2;
+    l2_config.miss_alloc = true;
+    l2_config.size = 512 << 10;
+    l2_config.associativity = 16;
+    l2_config.num_banks = 4;
+    l2_config.num_slices = 1;
+    l2_config.crossbar_width = l2_config.num_banks;
+    l2_config.num_mshr = 192;
+    l2_config.num_subentries = 4;
+    l2_config.latency = 160;
 
 	UnitL2Cache::PowerConfig l2_power_config;
 
-	Units::UnitCrossbar::Configuration xbar_config;
-	xbar_config.num_slices = l2_config.num_slices;
-	xbar_config.slice_stride = l2_config.block_size;
-	xbar_config.num_partitions = num_partitions;
-	xbar_config.partition_stride = partition_stride;
+    Units::UnitCrossbar::Configuration xbar_config;
+    xbar_config.num_slices = l3_config.num_slices;
+    xbar_config.slice_stride = l3_config.block_size;
+    xbar_config.num_partitions = num_partitions;
+    xbar_config.partition_stride = partition_stride;
 
 	//L1d$
 	UnitL1Cache::Configuration l1d_config;
@@ -433,31 +480,45 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = project_folder_path + "build\\src\\arches-v2\\config-files\\gddr6_pch_config.yaml";
+	dram_config.config_path = get_config_folder_path() + "gddr6_pch_config.yaml";
 	dram_config.size = 1ull << 30; //1GB
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 1;
 	//dram_config.latency = 56;
 
-	//L2$
-	UnitL2Cache::Configuration l2_config;
-	l2_config.level = 2;
-	l2_config.miss_alloc = false;
-	l2_config.size = 256 << 10;
-	l2_config.associativity = 16;
-	l2_config.num_slices = 1;
-	l2_config.crossbar_width = l2_config.num_slices;
-	l2_config.num_mshr = 1;
-	l2_config.num_subentries = 1;
-	l2_config.latency = 10;
+	//L3$
+	UnitL3Cache::Configuration l3_config;
+	l3_config.level = 3;
+	l3_config.miss_alloc = false;
+	l3_config.size = 256 << 10;
+	l3_config.associativity = 16;
+	l3_config.num_slices = 1;
+	l3_config.crossbar_width = l3_config.num_slices;
+	l3_config.num_mshr = 1;
+	l3_config.num_subentries = 1;
+	l3_config.latency = 10;
+
+	UnitL3Cache::PowerConfig l3_power_config;
+
+    //L2$
+    UnitL2Cache::Configuration l2_config;
+    l2_config.level = 2;
+    l2_config.miss_alloc = false;
+    l2_config.size = 256 << 10;
+    l2_config.associativity = 16;
+    l2_config.num_banks = 1;
+    l2_config.crossbar_width = l2_config.num_banks;
+    l2_config.num_mshr = 1;
+    l2_config.num_subentries = 1;
+    l2_config.latency = 10;
 
 	UnitL2Cache::PowerConfig l2_power_config;
 
-	Units::UnitCrossbar::Configuration xbar_config;
-	xbar_config.num_slices = l2_config.num_slices;
-	xbar_config.slice_stride = l2_config.block_size;
-	xbar_config.num_partitions = num_partitions;
-	xbar_config.partition_stride = partition_stride;
+    Units::UnitCrossbar::Configuration xbar_config;
+    xbar_config.num_slices = l3_config.num_slices;
+    xbar_config.slice_stride = l3_config.block_size;
+    xbar_config.num_partitions = num_partitions;
+    xbar_config.partition_stride = partition_stride;
 
 	//L1d$
 	UnitL1Cache::Configuration l1d_config;
@@ -496,29 +557,41 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	std::vector<std::vector<Units::UnitSFU*>> sfu_lists; sfu_lists.reserve(num_tms);
 	std::vector<std::vector<Units::UnitMemoryBase*>> mem_lists; mem_lists.reserve(num_tms);
 
-	//construct memory partitions
-	std::vector<UnitDRAM*> drams;
+    //construct memory partitions
+    std::vector<UnitDRAM*> drams;
+    std::vector<UnitL3Cache*> l3s;
+    dram_config.num_ports = l3_config.num_slices;
+    l3_config.num_ports = l3_config.num_slices;
+    for (uint i = 0; i < num_partitions; ++i)
+    {
+        drams.push_back(_new UnitDRAM(dram_config));
+        simulator.register_unit(drams.back());
+
+        l3_config.mem_higher_port = 0;
+        l3_config.mem_highers = { drams.back() };
+        l3s.push_back(_new UnitL3Cache(l3_config));
+        simulator.register_unit(l3s.back());
+        simulator.new_unit_group();
+
+        xbar_config.mem_highers.push_back(l3s.back());
+    }
+
+    xbar_config.num_clients = num_tms / 8;
+    Units::UnitCrossbar xbar(xbar_config);
+    simulator.register_unit(&xbar);
+    simulator.new_unit_group();
+
 	std::vector<UnitL2Cache*> l2s;
-	dram_config.num_ports = l2_config.num_slices;
-	l2_config.num_ports = l2_config.num_slices;
-	for(uint i = 0; i < num_partitions; ++i)
-	{
-		drams.push_back(_new UnitDRAM(dram_config));
-		simulator.register_unit(drams.back());
-
-		l2_config.mem_higher_port = 0;
-		l2_config.mem_highers = {drams.back()};
-		l2s.push_back(_new UnitL2Cache(l2_config));
-		simulator.register_unit(l2s.back());
-		simulator.new_unit_group();
-
-		xbar_config.mem_highers.push_back(l2s.back());
-	}
-
-	xbar_config.num_clients = num_tms;
-	Units::UnitCrossbar xbar(xbar_config);
-	simulator.register_unit(&xbar);
-	simulator.new_unit_group();
+	l2_config.mem_highers = { &xbar }; // L1 (lower) <-> L2 <-> xbar (higher)
+    l2_config.num_ports = 8; // can accept requests from 8 L1s
+    l2_config.crossbar_width = 8;
+	// construct 1 L2 module for every 8 L1s
+	for (int l2_index = 0; l2_index < num_tms / 8; ++l2_index) {
+		l2_config.mem_higher_port = l2_index; // xbar port id to connect to
+        l2s.push_back(_new UnitL2Cache(l2_config));
+        simulator.register_unit(l2s.back());
+    }
+    simulator.new_unit_group();
 
 	std::vector<uint8_t> vec_mem;
 	vec_mem.resize(256 << 20);
@@ -551,8 +624,8 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	simulator.register_unit(&atomic_regs);
 	simulator.new_unit_group();
 
-	l1d_config.num_ports = num_tps;
-	l1d_config.mem_highers = {&xbar};
+    l1d_config.num_ports = num_tps;
+    l1d_config.mem_highers = { &xbar };
 #if TRAX_USE_RT_CORE
 	l1d_config.num_ports += num_tps;
 	l1d_config.crossbar_width *= 2;
@@ -564,12 +637,13 @@ static void run_sim_trax(SimulationConfig& sim_config)
 		std::vector<Units::UnitMemoryBase*> mem_list;
 		std::vector<Units::UnitSFU*> sfu_list;
 
-		l1d_config.mem_higher_port = tm_index;
-		l1ds.push_back(new UnitL1Cache(l1d_config));
-		simulator.register_unit(l1ds.back());
-		mem_list.push_back(l1ds.back());
-		unit_table[(uint)ISA::RISCV::InstrType::LOAD] = l1ds.back();
-		unit_table[(uint)ISA::RISCV::InstrType::STORE] = l1ds.back();
+        l1d_config.mem_highers = { l2s[tm_index / 8] }; // L1 <-> L2 (higher)
+        l1d_config.mem_higher_port = tm_index % 8;
+        l1ds.push_back(new UnitL1Cache(l1d_config));
+        simulator.register_unit(l1ds.back());
+        mem_list.push_back(l1ds.back());
+        unit_table[(uint)ISA::RISCV::InstrType::LOAD] = l1ds.back();
+        unit_table[(uint)ISA::RISCV::InstrType::STORE] = l1ds.back();
 
 		thread_schedulers.push_back(_new  Units::UnitThreadScheduler(num_tps, tm_index, &atomic_regs, 32));
 		simulator.register_unit(thread_schedulers.back());
@@ -659,64 +733,71 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	for(auto& tp : tps)
 		tp->set_entry_point(elf.elf_header->e_entry.u64);
 
-	//master logs
-	UnitDRAM::Log dram_log;
-	UnitL2Cache::Log l2_log;
-	UnitL1Cache::Log l1d_log;
-	Units::UnitTP::Log tp_log;
+    //master logs
+    UnitDRAM::Log dram_log;
+    UnitL3Cache::Log l3_log;
+    UnitL2Cache::Log l2_log;
+    UnitL1Cache::Log l1d_log;
+    Units::UnitTP::Log tp_log;
 
 	UnitRTCore::Log rtc_log;
 	Units::UnitTexture::Log tu_log;
 
-	uint delta = sim_config.get_int("logging-interval");
-	float delta_s = delta / core_clock;
-	float delta_ns = delta_s * 1e9;
-	float delta_dram_cycles = delta_s * dram_clock;
-	float peak_dram_bandwidth = dram_clock / core_clock * num_partitions * 4 * 32 / 8;
-	float peak_l2_bandwidth = num_partitions * l2_config.num_slices * MemoryRequest::MAX_SIZE;
-	float peak_l1d_bandwidth = num_tms * l1d_config.num_banks * MemoryRequest::MAX_SIZE;
+    uint delta = sim_config.get_int("logging-interval");
+    float delta_s = delta / core_clock;
+    float delta_ns = delta_s * 1e9;
+    float delta_dram_cycles = delta_s * dram_clock;
+    float peak_dram_bandwidth = dram_clock / core_clock * num_partitions * 4 * 32 / 8;
+    float peak_l3_bandwidth = num_partitions * l3_config.num_slices * MemoryRequest::MAX_SIZE;
+    float peak_l2_bandwidth = num_partitions * l2_config.num_banks * MemoryRequest::MAX_SIZE;
+    float peak_l1d_bandwidth = num_tms * l1d_config.num_banks * MemoryRequest::MAX_SIZE;
 
 	//peak_dram_bandwidth = 32 * core_clock * num_partitions;
 	//peak_l2_bandwidth = 32 * num_tms / 2;
 
-	auto start = std::chrono::high_resolution_clock::now();
-	simulator.execute(delta, [&]() -> void
-	{
-		UnitDRAM::Log dram_delta_log = delta_log(dram_log, drams);
-		UnitL2Cache::Log l2_delta_log = delta_log(l2_log, l2s);
-		UnitL1Cache::Log l1d_delta_log = delta_log(l1d_log, l1ds);
-		UnitRTCore::Log rtc_delta_log = delta_log(rtc_log, rtcs);
-		Units::UnitTexture::Log tu_delta_log = delta_log(tu_log, tus);
+    auto start = std::chrono::high_resolution_clock::now();
+    simulator.execute(delta, [&]() -> void
+        {
+            UnitDRAM::Log dram_delta_log = delta_log(dram_log, drams);
+            UnitL3Cache::Log l3_delta_log = delta_log(l3_log, l3s);
+            UnitL2Cache::Log l2_delta_log = delta_log(l2_log, l2s);
+            UnitL1Cache::Log l1d_delta_log = delta_log(l1d_log, l1ds);
+            UnitRTCore::Log rtc_delta_log = delta_log(rtc_log, rtcs);
+            Units::UnitTexture::Log tu_delta_log = delta_log(tu_log, tus);
 
 		double simulation_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count() / 1000.0;
 
-		printf("                            \n");
-		printf("Cycle: %lld                 \n", simulator.current_cycle);
-		printf("Threads Launched: %d        \n", atomic_regs.iregs[0]);
-		printf("Simulation rate: %.2f KHz\n", simulator.current_cycle / simulation_time / 1000.0);
-		printf("                            \n");
-		printf("DRAM Read: %8.1f GB/s  (%.2f%%)\n", (float)dram_delta_log.bytes_read / delta_ns, 100.0f * dram_delta_log.bytes_read / delta / peak_dram_bandwidth);
-		printf(" L2$ Read: %8.1f B/clk (%.2f%%)\n", (float)l2_delta_log.bytes_read / delta, 100.0f * l2_delta_log.bytes_read / delta / peak_l2_bandwidth);
-		printf("L1d$ Read: %8.1f B/clk (%.2f%%)\n", (float)l1d_delta_log.bytes_read / delta, 100.0 * l1d_delta_log.bytes_read / delta / peak_l1d_bandwidth);
-		printf("                            \n");
-		printf(" L2$ Hit/Half/Miss: %3.1f%%/%3.1f%%/%3.1f%%\n", 100.0 * l2_delta_log.hits / l2_delta_log.get_total(), 100.0 * l2_delta_log.half_misses / l2_delta_log.get_total(), 100.0 * l2_delta_log.misses / l2_delta_log.get_total());
-		printf("L1d$ Hit/Half/Miss: %3.1f%%/%3.1f%%/%3.1f%%\n", 100.0 * l1d_delta_log.hits / l1d_delta_log.get_total(), 100.0 * l1d_delta_log.half_misses / l1d_delta_log.get_total(), 100.0 * l1d_delta_log.misses / l1d_delta_log.get_total());
-		printf("                            \n");
-		printf(" L2$ Stalls: %0.2f%%\n", 100.0 * l2_delta_log.mshr_stalls / num_partitions / l2_config.num_slices / l2_config.num_banks / delta);
-		printf("L1d$ Stalls: %0.2f%%\n", 100.0 * l1d_delta_log.mshr_stalls / num_tms / l1d_config.num_banks / delta);
-		printf("                            \n");
-		printf("L2$  Occ: %0.2f%%\n", 100.0 * l2_delta_log.get_total() / num_partitions / l2_config.num_slices / l2_config.num_banks / delta);
-		printf("L1d$ Occ: %0.2f%%\n", 100.0 * l1d_delta_log.get_total() / num_tms / l1d_config.num_banks / delta);
-		printf("                            \n");
-		
-		tu_delta_log.print(delta, tus.size());
-		
-		if(!rtcs.empty())
-		{
-			printf("MRays/s: %.0f\n\n", rtc_delta_log.rays / delta_ns * 1000.0);
-			rtc_delta_log.print(rtcs.size());
-		}
-	});
+            printf("                            \n");
+            printf("Cycle: %lld                 \n", simulator.current_cycle);
+            printf("Threads Launched: %d        \n", atomic_regs.iregs[0]);
+            printf("Simulation rate: %.2f KHz\n", simulator.current_cycle / simulation_time / 1000.0);
+            printf("                            \n");
+            printf("DRAM Read: %8.1f GB/s  (%.2f%%)\n", (float)dram_delta_log.bytes_read / delta_ns, 100.0f * dram_delta_log.bytes_read / delta / peak_dram_bandwidth);
+            printf(" L3$ Read: %8.1f B/clk (%.2f%%)\n", (float)l3_delta_log.bytes_read / delta, 100.0f * l3_delta_log.bytes_read / delta / peak_l3_bandwidth);
+            printf(" L2$ Read: %8.1f B/clk (%.2f%%)\n", (float)l2_delta_log.bytes_read / delta, 100.0f * l2_delta_log.bytes_read / delta / peak_l2_bandwidth);
+            printf("L1d$ Read: %8.1f B/clk (%.2f%%)\n", (float)l1d_delta_log.bytes_read / delta, 100.0 * l1d_delta_log.bytes_read / delta / peak_l1d_bandwidth);
+            printf("                            \n");
+            printf(" L3$ Hit/Half/Miss: %3.1f%%/%3.1f%%/%3.1f%%\n", 100.0 * l3_delta_log.hits / l3_delta_log.get_total(), 100.0 * l3_delta_log.half_misses / l3_delta_log.get_total(), 100.0 * l3_delta_log.misses / l3_delta_log.get_total());
+            printf(" L2$ Hit/Half/Miss: %3.1f%%/%3.1f%%/%3.1f%%\n", 100.0 * l2_delta_log.hits / l2_delta_log.get_total(), 100.0 * l2_delta_log.half_misses / l2_delta_log.get_total(), 100.0 * l2_delta_log.misses / l2_delta_log.get_total());
+            printf("L1d$ Hit/Half/Miss: %3.1f%%/%3.1f%%/%3.1f%%\n", 100.0 * l1d_delta_log.hits / l1d_delta_log.get_total(), 100.0 * l1d_delta_log.half_misses / l1d_delta_log.get_total(), 100.0 * l1d_delta_log.misses / l1d_delta_log.get_total());
+            printf("                            \n");
+            printf(" L3$ Stalls: %0.2f%%\n", 100.0 * l3_delta_log.mshr_stalls / num_partitions / l3_config.num_slices / l3_config.num_banks / delta);
+            printf(" L2$ Stalls: %0.2f%%\n", 100.0 * l2_delta_log.mshr_stalls / num_tms / l2_config.num_banks / delta);
+            printf("L1d$ Stalls: %0.2f%%\n", 100.0 * l1d_delta_log.mshr_stalls / num_tms / l1d_config.num_banks / delta);
+            printf("                            \n");
+            printf("L3$  Occ: %0.2f%%\n", 100.0 * l3_delta_log.get_total() / num_partitions / l3_config.num_slices / l3_config.num_banks / delta);
+            printf("L2$  Occ: %0.2f%%\n", 100.0 * l2_delta_log.get_total() / num_partitions / l2_config.num_slices / l2_config.num_banks / delta);
+            printf("L1d$ Occ: %0.2f%%\n", 100.0 * l1d_delta_log.get_total() / num_tms / l1d_config.num_banks / delta);
+            printf("                            \n");
+
+            tu_delta_log.print(delta, tus.size());
+
+            if (!rtcs.empty())
+            {
+                printf("MRays/s: %.0f\n\n", rtc_delta_log.rays / delta_ns * 1000.0);
+                rtc_delta_log.print(rtcs.size());
+            }
+        });
 
 	auto stop = std::chrono::high_resolution_clock::now();
 
@@ -745,11 +826,17 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	printf("DRAM Read: %.1f GB/s (%.2f%%)\n", (float)dram_log.bytes_read / frame_time_ns, 100.0f * dram_log.bytes_read / frame_cycles / peak_dram_bandwidth);
 	dram_log.print(frame_cycles);
 
+    print_header("L3$");
+    delta_log(l3_log, l3s);
+    printf(" L3$ Read: %.1f B/clk (%.2f%%)\n", (float)l3_log.bytes_read / frame_cycles, 100.0f * l3_log.bytes_read / frame_cycles / peak_l3_bandwidth);
+    l3_log.print(frame_cycles);
+    total_power += l3_log.print_power(l3_power_config, frame_time);
+	
 	print_header("L2$");
-	delta_log(l2_log, l2s);
-	printf(" L2$ Read: %.1f B/clk (%.2f%%)\n", (float)l2_log.bytes_read / frame_cycles, 100.0f * l2_log.bytes_read / frame_cycles / peak_l2_bandwidth);
-	l2_log.print(frame_cycles);
-	total_power += l2_log.print_power(l2_power_config, frame_time);
+    delta_log(l2_log, l2s);
+    printf(" L2$ Read: %.1f B/clk (%.2f%%)\n", (float)l2_log.bytes_read / frame_cycles, 100.0f * l2_log.bytes_read / frame_cycles / peak_l2_bandwidth);
+    l2_log.print(frame_cycles);
+    total_power += l2_log.print_power(l2_power_config, frame_time);
 
 	print_header("L1d$");
 	delta_log(l1d_log, l1ds);
@@ -795,13 +882,14 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	stbi_flip_vertically_on_write(true);
 	stbi_write_png("out.png", (int)kernel_args.framebuffer_width, (int)kernel_args.framebuffer_height, 4, vec_mem.data() + (size_t)kernel_args.framebuffer, 0);
 
-	for(auto& tp : tps) delete tp;
-	for(auto& sfu : sfus) delete sfu;
-	for(auto& l1d : l1ds) delete l1d;
-	for(auto& thread_scheduler : thread_schedulers) delete thread_scheduler;
-	for(auto& rtc : rtcs) delete rtc;
-	for(auto& l2 : l2s) delete l2;
-	for(auto& dram : drams) delete dram;
+    for(auto& tp : tps) delete tp;
+    for(auto& sfu : sfus) delete sfu;
+    for(auto& l1d : l1ds) delete l1d;
+    for(auto& thread_scheduler : thread_schedulers) delete thread_scheduler;
+    for(auto& rtc : rtcs) delete rtc;
+    for(auto& l3 : l3s) delete l3;
+    for(auto& l2 : l2s) delete l2;
+    for(auto& dram : drams) delete dram;
 }}}
 
 int main(int argc, char* argv[])

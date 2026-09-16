@@ -51,6 +51,13 @@ add_executable(${PROJECT_NAME} ${NEW_INCLUDE} ${NEW_SOURCES} ${USIMM_CONFIG} ${R
 # add_executable(${PROJECT_NAME} ${ALL_INCLUDE} ${ALL_SOURCES})
 # source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${ALL_INCLUDE} ${ALL_SOURCES})
 
+# Paths that are only knowable at configure time. Deriving them from argv[0] at
+# runtime breaks for any build directory not literally named "build" (CLion's
+# cmake-build-release, for instance).
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+  ARCHES_PROJECT_DIR="${PROJECT_SOURCE_DIR}/"
+  ARCHES_CONFIG_DIR="${CMAKE_CURRENT_BINARY_DIR}/config-files/")
+
 target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/external)
 target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/src/arches-v2)
 target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/include)
@@ -58,7 +65,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/src)
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT DISABLE)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
-if(WINDOWS)
+if(WIN32)
   target_link_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/libraries/tbb)
   target_link_libraries(${PROJECT_NAME} PRIVATE tbb12.lib)
 elseif(LINUX)

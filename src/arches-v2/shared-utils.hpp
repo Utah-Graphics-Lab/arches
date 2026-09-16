@@ -33,10 +33,23 @@ void set_full_exe_name(const char *name) {
 
 std::string get_project_folder_path()
 {
-	// CHAR path[MAX_PATH];
-	// GetModuleFileNameA(NULL, path, MAX_PATH);
+#ifdef ARCHES_PROJECT_DIR
+	return ARCHES_PROJECT_DIR;
+#else
+	//Fallback: assume the exe lives under a directory named "build" in the project root.
 	std::string executable_path(full_exe_name);
 	return executable_path.substr(0, executable_path.rfind("build"));
+#endif
+}
+
+//Folder the memory controller config files were copied to by the build.
+std::string get_config_folder_path()
+{
+#ifdef ARCHES_CONFIG_DIR
+	return ARCHES_CONFIG_DIR;
+#else
+	return get_project_folder_path() + "build/src/arches-v2/config-files/";
+#endif
 }
 
 template <typename T>
@@ -222,7 +235,7 @@ public:
 		set_param("max-rays", 128);
 
 		//Workload
-		set_param("dataset-dir", "./datasets");
+		set_param("dataset-dir", get_project_folder_path() + "datasets");
 		set_param("scene-name", "sponza");
 		set_param("framebuffer-width", 1024);
 		set_param("framebuffer-height", 1024);

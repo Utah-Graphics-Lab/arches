@@ -3,6 +3,7 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+.idea/*
 
 # objs
 datasets
@@ -423,3 +424,5 @@ out/
 datasets/
 
 ext/
+
+src/trax-kernel/kernel-gcc
