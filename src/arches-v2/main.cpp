@@ -416,12 +416,12 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	UnitL3Cache::Configuration l3_config;
 	l3_config.level = 3;
 	l3_config.miss_alloc = true;
-	l3_config.size = 512 << 10;
+	l3_config.size = 4096 << 10;
 	l3_config.associativity = 16;
 	l3_config.num_slices = 4;
 	l3_config.crossbar_width = l3_config.num_slices;
-	l3_config.num_mshr = 192;
-	l3_config.num_subentries = 4;
+	l3_config.num_mshr = 256;
+	l3_config.num_subentries = 16;
 	l3_config.latency = 480;
 
 	UnitL3Cache::PowerConfig l3_power_config;
@@ -433,10 +433,10 @@ static void run_sim_trax(SimulationConfig& sim_config)
     l2_config.size = 512 << 10;
     l2_config.associativity = 16;
     l2_config.num_banks = 4;
-    l2_config.num_slices = 1;
+    //l2_config.num_slices = 1;
     l2_config.crossbar_width = l2_config.num_banks;
-    l2_config.num_mshr = 192;
-    l2_config.num_subentries = 4;
+    l2_config.num_mshr = 256;
+    l2_config.num_subentries = 16;
     l2_config.latency = 160;
 
 	UnitL2Cache::PowerConfig l2_power_config;
