@@ -260,6 +260,18 @@ void UnitTP::clock_fall()
 {
 	uint thread_id = _thread_exec_arbiter.get_index();
 	if(thread_id == ~0u) thread_id = _last_thread_id;
+
+	//A halted thread has nothing to issue. Without this check its stale instruction (the final ret) was
+	//re-issued every cycle, inflating issue counts and re-running the halt logic, which could retire the TP
+	//while other threads were still running. Attribute the cycle to a live thread, or idle once all have halted.
+	if(_thread_data[thread_id].pc == 0x0ull)
+	{
+		thread_id = ~0u;
+		for(uint i = 0; i < _num_threads; ++i)
+			if(_thread_data[i].pc != 0x0ull) { thread_id = i; break; }
+		if(thread_id == ~0u) return;
+	}
+
 	ThreadData& thread = _thread_data[thread_id];
 
 	DecodePhase stall_phase;
