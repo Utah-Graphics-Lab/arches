@@ -229,6 +229,7 @@ public:
 	{
 		//Simulation
 		set_param("logging-interval", 10000);
+		set_param("print-intervals", 1); //0 skips the per-interval console report (counters are still collected)
 
 		//Live stream to an external visualizer (live-port=0 disables)
 		set_param("live-host", "127.0.0.1");

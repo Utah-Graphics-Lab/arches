@@ -772,6 +772,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	//live stream to an external visualizer
 	LiveStream live_stream(sim_config.get_string("live-host"), (uint16_t)sim_config.get_int("live-port"));
 	uint live_frame_interval = sim_config.get_int("live-frame-interval");
+	bool print_intervals = sim_config.get_int("print-intervals") != 0;
 	uint live_interval_index = 0;
 	constexpr uint num_instr_types = (uint)ISA::RISCV::InstrType::NUM_TYPES;
 	uint64_t live_tp_prev[3][num_instr_types] = {};
@@ -863,6 +864,8 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 		double simulation_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count() / 1000.0;
 
+		if(print_intervals)
+		{
             printf("                            \n");
             printf("Cycle: %lld                 \n", simulator.current_cycle);
             printf("Threads Launched: %d        \n", atomic_regs.iregs[0]);
@@ -893,6 +896,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
                 printf("MRays/s: %.0f\n\n", rtc_delta_log.rays / delta_ns * 1000.0);
                 rtc_delta_log.print(rtcs.size());
             }
+		}
 
 		if(live_stream.connected())
 		{
