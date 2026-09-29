@@ -86,6 +86,11 @@ public:
 		return end_array();
 	}
 
+	JsonWriter& counters(const char* key, const std::vector<uint64_t>& v) { return counters(key, v.data(), v.size()); }
+
+	// Inserts an already serialized JSON value.
+	JsonWriter& raw(const char* key, const std::string& json) { _key(key); _out += json; return *this; }
+
 	const std::string& str() const { return _out; }
 
 private:

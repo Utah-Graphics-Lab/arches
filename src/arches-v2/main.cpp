@@ -776,6 +776,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	uint live_interval_index = 0;
 	constexpr uint num_instr_types = (uint)ISA::RISCV::InstrType::NUM_TYPES;
 	uint64_t live_tp_prev[3][num_instr_types] = {};
+	std::vector<uint64_t> live_tp_issued_prev(tps.size(), 0);
 
 	std::vector<uint8_t> live_framebuffer;
 	auto read_framebuffer = [&]() -> const uint8_t*
@@ -835,6 +836,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 			.value("framebuffer_width", kernel_args.framebuffer_width)
 			.value("framebuffer_height", kernel_args.framebuffer_height)
 			.value("has_rt_core", (uint)!rtcs.empty())
+			.value("tms_per_l2", (uint)(num_tms / l2s.size()))
 			.begin_object("dram")
 				.value("units", (uint)drams.size())
 				.value("peak_bytes_per_cycle", (double)peak_dram_bandwidth)
@@ -852,18 +854,76 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	//peak_dram_bandwidth = 32 * core_clock * num_partitions;
 	//peak_l2_bandwidth = 32 * num_tms / 2;
 
-	auto send_live_stats = [&](uint cycles, double wall_time, const UnitDRAM::Log& dram_delta_log, const UnitL3Cache::Log& l3_delta_log, const UnitL2Cache::Log& l2_delta_log,
+	//per-unit counters for the visualizer's heatmaps; must run before delta_log resets the unit logs
+	auto snapshot_units = [&]() -> std::string
+	{
+		auto write_caches = [](JsonWriter& json, const char* key, const std::vector<UnitL1Cache*>& caches)
+		{
+			std::vector<uint64_t> hits, half_misses, misses, mshr_stalls, bytes_read;
+			for(auto& cache : caches)
+			{
+				hits.push_back(cache->log.hits);
+				half_misses.push_back(cache->log.half_misses);
+				misses.push_back(cache->log.misses);
+				mshr_stalls.push_back(cache->log.mshr_stalls);
+				bytes_read.push_back(cache->log.bytes_read);
+			}
+			json.begin_object(key)
+				.counters("hits", hits)
+				.counters("half_misses", half_misses)
+				.counters("misses", misses)
+				.counters("mshr_stalls", mshr_stalls)
+				.counters("bytes_read", bytes_read)
+				.end_object();
+		};
+
+		JsonWriter json;
+		json.begin_object();
+		write_caches(json, "l1d", l1ds);
+		write_caches(json, "l2", l2s);
+		write_caches(json, "l3", l3s);
+
+		std::vector<uint64_t> dram_bytes_read, dram_loads, dram_stores, rays;
+		for(auto& dram : drams)
+		{
+			dram_bytes_read.push_back(dram->log.bytes_read);
+			dram_loads.push_back(dram->log.loads);
+			dram_stores.push_back(dram->log.stores);
+		}
+		for(auto& rtc : rtcs)
+			rays.push_back(rtc->log.rays);
+
+		json.begin_object("dram")
+				.counters("bytes_read", dram_bytes_read)
+				.counters("loads", dram_loads)
+				.counters("stores", dram_stores)
+			.end_object()
+			.begin_object("rtc")
+				.counters("rays", rays)
+			.end_object()
+			.end_object();
+		return json.str();
+	};
+
+	auto send_live_stats = [&](uint cycles, double wall_time, const std::string& units_json, const UnitDRAM::Log& dram_delta_log, const UnitL3Cache::Log& l3_delta_log, const UnitL2Cache::Log& l2_delta_log,
 		const UnitL1Cache::Log& l1d_delta_log, const Units::UnitTexture::Log& tu_delta_log, const UnitRTCore::Log& rtc_delta_log)
 	{
 		//TP logs are not reset per interval (the final report and profile rely on them), so diff running totals instead
 		uint64_t tp_totals[3][num_instr_types] = {};
-		for(auto& tp : tps)
+		std::vector<uint64_t> tp_issued(tps.size());
+		for(uint t = 0; t < tps.size(); ++t)
+		{
+			uint64_t issued = 0;
 			for(uint i = 0; i < num_instr_types; ++i)
 			{
-				tp_totals[0][i] += tp->log.instruction_counters[i];
-				tp_totals[1][i] += tp->log._resource_stall_counters[i];
-				tp_totals[2][i] += tp->log._data_stall_counters[i];
+				tp_totals[0][i] += tps[t]->log.instruction_counters[i];
+				tp_totals[1][i] += tps[t]->log._resource_stall_counters[i];
+				tp_totals[2][i] += tps[t]->log._data_stall_counters[i];
+				issued += tps[t]->log.instruction_counters[i];
 			}
+			tp_issued[t] = issued - live_tp_issued_prev[t];
+			live_tp_issued_prev[t] = issued;
+		}
 		uint64_t tp_delta[3][num_instr_types];
 		for(uint j = 0; j < 3; ++j)
 			for(uint i = 0; i < num_instr_types; ++i)
@@ -905,7 +965,9 @@ static void run_sim_trax(SimulationConfig& sim_config)
 				.counters("issued", tp_delta[0], num_instr_types)
 				.counters("resource_stalls", tp_delta[1], num_instr_types)
 				.counters("data_stalls", tp_delta[2], num_instr_types)
+				.counters("issued_per_tp", tp_issued) //TM-major: index = tm * num_tps + tp
 			.end_object()
+			.raw("units", units_json)
 			.end_object();
 		live_stream.send(LiveStream::MessageType::STATS, json.str());
 	};
@@ -913,6 +975,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
     auto start = std::chrono::high_resolution_clock::now();
     simulator.execute(delta, [&]() -> void
         {
+			std::string units_json = live_stream.connected() ? snapshot_units() : std::string();
             UnitDRAM::Log dram_delta_log = delta_log(dram_log, drams);
             UnitL3Cache::Log l3_delta_log = delta_log(l3_log, l3s);
             UnitL2Cache::Log l2_delta_log = delta_log(l2_log, l2s);
@@ -958,7 +1021,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 		if(live_stream.connected())
 		{
-			send_live_stats(delta, simulation_time, dram_delta_log, l3_delta_log, l2_delta_log, l1d_delta_log, tu_delta_log, rtc_delta_log);
+			send_live_stats(delta, simulation_time, units_json, dram_delta_log, l3_delta_log, l2_delta_log, l1d_delta_log, tu_delta_log, rtc_delta_log);
 
 			++live_interval_index;
 			if(live_frame_interval != 0 && live_interval_index % live_frame_interval == 0)
@@ -972,6 +1035,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	uint tail_cycles = delta ? (uint)(simulator.current_cycle % delta) : 0;
 	if(live_stream.connected() && tail_cycles != 0)
 	{
+		std::string units_json = snapshot_units();
 		UnitDRAM::Log dram_delta_log = delta_log(dram_log, drams);
 		UnitL3Cache::Log l3_delta_log = delta_log(l3_log, l3s);
 		UnitL2Cache::Log l2_delta_log = delta_log(l2_log, l2s);
@@ -979,7 +1043,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 		UnitRTCore::Log rtc_delta_log = delta_log(rtc_log, rtcs);
 		Units::UnitTexture::Log tu_delta_log = delta_log(tu_log, tus);
 		double wall_time = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count() / 1000.0;
-		send_live_stats(tail_cycles, wall_time, dram_delta_log, l3_delta_log, l2_delta_log, l1d_delta_log, tu_delta_log, rtc_delta_log);
+		send_live_stats(tail_cycles, wall_time, units_json, dram_delta_log, l3_delta_log, l2_delta_log, l1d_delta_log, tu_delta_log, rtc_delta_log);
 	}
 
 	for(uint addr = 0; addr < (256 << 20); addr += partition_stride)
