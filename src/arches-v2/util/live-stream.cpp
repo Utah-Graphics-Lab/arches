@@ -210,6 +210,57 @@ void LiveStream::_close()
 	_connected = false;
 }
 
+void Topology::group(const std::string& id, const std::string& label, uint count, const Props& props, const std::string& parent, const std::string& stats)
+{
+	JsonWriter json;
+	json.begin_object()
+		.value("id", id)
+		.value("label", label)
+		.value("count", count)
+		.value("parent", parent)
+		.value("stats", stats)
+		.begin_array("props");
+	for(auto& prop : props)
+		json.begin_array().value(nullptr, prop.first).value(nullptr, prop.second).end_array();
+	json.end_array().end_object();
+	_groups.push_back(json.str());
+}
+
+void Topology::link(const std::string& from, const std::string& to, const std::string& map, const std::string& traffic)
+{
+	JsonWriter json;
+	json.begin_object()
+		.value("from", from)
+		.value("to", to)
+		.value("map", map)
+		.value("traffic", traffic)
+		.end_object();
+	_links.push_back(json.str());
+}
+
+std::string Topology::json() const
+{
+	std::string out = "{\"groups\":[";
+	for(size_t i = 0; i < _groups.size(); ++i)
+		out += (i ? "," : "") + _groups[i];
+	out += "],\"links\":[";
+	for(size_t i = 0; i < _links.size(); ++i)
+		out += (i ? "," : "") + _links[i];
+	return out + "]}";
+}
+
+std::string Topology::bytes(uint64_t size)
+{
+	const char* units[] = {"B", "KB", "MB", "GB", "TB"};
+	uint unit = 0;
+	while(size >= 1024 && size % 1024 == 0 && unit < 4)
+	{
+		size /= 1024;
+		++unit;
+	}
+	return std::to_string(size) + " " + units[unit];
+}
+
 void JsonWriter::_key(const char* key)
 {
 	if(!_first) _out += ',';

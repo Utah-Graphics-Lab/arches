@@ -62,6 +62,34 @@ private:
 	void _close();
 };
 
+// Describes the simulated architecture for the visualizer's block diagram: groups of identical
+// units and the links between them. Record each group right where its units are constructed so
+// the diagram always matches what was actually built.
+class Topology
+{
+public:
+	typedef std::vector<std::pair<std::string, std::string>> Props;
+
+	// `count` is the total number of units. With a `parent`, they are split evenly among the
+	// parent's units. `stats` names the per-unit counters in STATS ("l1d", "tp", ...), if any.
+	void group(const std::string& id, const std::string& label, uint count, const Props& props = {}, const std::string& parent = "", const std::string& stats = "");
+
+	// How units of `from` connect to units of `to`:
+	//   "one"   unit i to unit i
+	//   "group" consecutive blocks of from-units share one to-unit (block size = from count / to count)
+	//   "all"   every unit to every unit (a crossbar)
+	//   "local" units within the same parent unit
+	// `traffic` names the per-unit counters whose bytes_read measure the data crossing the link.
+	void link(const std::string& from, const std::string& to, const std::string& map, const std::string& traffic = "");
+
+	std::string json() const;
+
+	static std::string bytes(uint64_t size);
+
+private:
+	std::vector<std::string> _groups, _links;
+};
+
 // Minimal JSON object writer, enough for flat and nested objects of numbers, strings and arrays.
 class JsonWriter
 {

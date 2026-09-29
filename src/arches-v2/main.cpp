@@ -574,6 +574,24 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	std::vector<std::vector<Units::UnitSFU*>> sfu_lists; sfu_lists.reserve(num_tms);
 	std::vector<std::vector<Units::UnitMemoryBase*>> mem_lists; mem_lists.reserve(num_tms);
 
+	//architecture description for the live visualizer's block diagram; each group is recorded where it is built
+	Topology topology;
+	auto num = [](auto v) { return std::to_string(v); };
+	auto cache_props = [&](const UnitL1Cache::Configuration& config) -> Topology::Props
+	{
+		return {
+			{"size", Topology::bytes(config.size)},
+			{"associativity", num(config.associativity) + "-way"},
+			{"block", Topology::bytes(config.block_size)},
+			{"slices x banks", num(config.num_slices) + " x " + num(config.num_banks)},
+			{"MSHRs x subentries", num(config.num_mshr) + " x " + num(config.num_subentries)},
+			{"latency", num(config.latency) + " cycles"},
+			{"policy", config.policy == Units::UnitCacheBase::Policy::LRU ? "LRU" : "FIFO"},
+			{"miss allocate", config.miss_alloc ? "yes" : "no"},
+			{"block prefetch", config.block_prefetch ? "yes" : "no"},
+		};
+	};
+
     //construct memory partitions
     std::vector<UnitDRAM*> drams;
     std::vector<UnitL3Cache*> l3s;
@@ -592,11 +610,26 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
         xbar_config.mem_highers.push_back(l3s.back());
     }
+	topology.group("dram", "DRAM", (uint)drams.size(), {
+		{"config", dram_config.config_path.substr(dram_config.config_path.find_last_of("/\\") + 1)},
+		{"clock", num((uint)(dram_clock / 1e6)) + " MHz"},
+		{"capacity", Topology::bytes(dram_config.size)},
+		{"latency", num(dram_config.latency) + " cycles"},
+	}, "", "dram");
+	topology.group("l3", "L3$", (uint)l3s.size(), cache_props(l3_config), "", "l3");
+	topology.link("l3", "dram", "one", "dram");
 
     xbar_config.num_clients = num_tms / 8;
     Units::UnitCrossbar xbar(xbar_config);
     simulator.register_unit(&xbar);
     simulator.new_unit_group();
+	topology.group("xbar", "Crossbar", 1, {
+		{"clients", num(xbar_config.num_clients)},
+		{"partitions", num(xbar_config.num_partitions)},
+		{"slices per partition", num(xbar_config.num_slices)},
+		{"partition stride", Topology::bytes(xbar_config.partition_stride)},
+	});
+	topology.link("xbar", "l3", "all", "l3");
 
 	std::vector<UnitL2Cache*> l2s;
 	l2_config.mem_highers = { &xbar }; // L1 (lower) <-> L2 <-> xbar (higher)
@@ -609,6 +642,8 @@ static void run_sim_trax(SimulationConfig& sim_config)
         simulator.register_unit(l2s.back());
     }
     simulator.new_unit_group();
+	topology.group("l2", "L2$", (uint)l2s.size(), cache_props(l2_config), "", "l2");
+	topology.link("l2", "xbar", "all", "l3");
 
 	std::vector<uint8_t> vec_mem;
 	vec_mem.resize(256 << 20);
@@ -640,6 +675,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	Units::UnitAtomicRegfile atomic_regs(num_tms);
 	simulator.register_unit(&atomic_regs);
 	simulator.new_unit_group();
+	topology.group("atomic", "Atomic registers", 1, {{"clients", num(num_tms)}, {"use", "thread fetch counter"}});
 
     l1d_config.num_ports = num_tps;
     l1d_config.mem_highers = { &xbar };
@@ -746,6 +782,43 @@ static void run_sim_trax(SimulationConfig& sim_config)
 		simulator.new_unit_group();
 	}
 
+	{
+		auto& instr_names = ISA::RISCV::InstructionTypeNameDatabase::get_instance();
+		auto served_by = [&](const Units::UnitBase* unit)
+		{
+			std::string types;
+			for(uint t = 0; t < (uint)ISA::RISCV::InstrType::NUM_TYPES; ++t)
+				if(unit_tables[0][t] == unit)
+					types += (types.empty() ? "" : ", ") + instr_names[(ISA::RISCV::InstrType)t];
+			return types;
+		};
+
+		topology.group("tm", "TM", num_tms, {{"TPs", num(num_tps)}, {"threads per TP", num(num_threads)}});
+		topology.group("tp", "TP", (uint)tps.size(), {{"threads", num(num_threads)}, {"stack", Topology::bytes(stack_size)}}, "tm", "tp");
+		topology.group("sched", "Thread scheduler", (uint)thread_schedulers.size(), {{"serves", served_by(thread_schedulers[0])}}, "tm");
+		Topology::Props sfu_props;
+		for(uint i = 0; i < sfu_lists[0].size(); ++i)
+			sfu_props.push_back({"SFU " + num(i), served_by(sfu_lists[0][i])});
+		topology.group("sfu", "SFUs", (uint)sfus.size(), sfu_props, "tm");
+		topology.group("tu", "Texture unit", (uint)tus.size(), {{"serves", served_by(tus[0])}}, "tm");
+		if(!rtcs.empty())
+			topology.group("rtc", "RT core", (uint)rtcs.size(), {{"serves", served_by(rtcs[0])}, {"max rays", num(rtc_config.max_rays)}, {"cache ports", num(rtc_config.num_cache_ports)}}, "tm", "rtc");
+		topology.group("l1d", "L1d$", (uint)l1ds.size(), cache_props(l1d_config), "tm", "l1d");
+
+		topology.link("tp", "sched", "local");
+		topology.link("tp", "sfu", "local");
+		topology.link("tp", "tu", "local");
+		if(!rtcs.empty())
+		{
+			topology.link("tp", "rtc", "local");
+			topology.link("rtc", "l1d", "local");
+		}
+		topology.link("tp", "l1d", "local", "l1d");
+		topology.link("tu", "l1d", "local");
+		topology.link("sched", "atomic", "all");
+		topology.link("l1d", "l2", "group", "l2");
+	}
+
 	printf("Starting TRaX\n");
 	for(auto& tp : tps)
 		tp->set_entry_point(elf.elf_header->e_entry.u64);
@@ -837,6 +910,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 			.value("framebuffer_height", kernel_args.framebuffer_height)
 			.value("has_rt_core", (uint)!rtcs.empty())
 			.value("tms_per_l2", (uint)(num_tms / l2s.size()))
+			.raw("topology", topology.json())
 			.begin_object("dram")
 				.value("units", (uint)drams.size())
 				.value("peak_bytes_per_cycle", (double)peak_dram_bandwidth)
