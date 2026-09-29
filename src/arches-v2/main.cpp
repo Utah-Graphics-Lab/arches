@@ -766,7 +766,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
     float delta_dram_cycles = delta_s * dram_clock;
     float peak_dram_bandwidth = dram_clock / core_clock * num_partitions * 4 * 32 / 8;
     float peak_l3_bandwidth = num_partitions * l3_config.num_slices * MemoryRequest::MAX_SIZE;
-    float peak_l2_bandwidth = num_partitions * l2_config.num_banks * MemoryRequest::MAX_SIZE;
+    float peak_l2_bandwidth = l2s.size() * l2_config.num_banks * MemoryRequest::MAX_SIZE;
     float peak_l1d_bandwidth = num_tms * l1d_config.num_banks * MemoryRequest::MAX_SIZE;
 
 	//live stream to an external visualizer
@@ -939,11 +939,11 @@ static void run_sim_trax(SimulationConfig& sim_config)
             printf("L1d$ Hit/Half/Miss: %3.1f%%/%3.1f%%/%3.1f%%\n", 100.0 * l1d_delta_log.hits / l1d_delta_log.get_total(), 100.0 * l1d_delta_log.half_misses / l1d_delta_log.get_total(), 100.0 * l1d_delta_log.misses / l1d_delta_log.get_total());
             printf("                            \n");
             printf(" L3$ Stalls: %0.2f%%\n", 100.0 * l3_delta_log.mshr_stalls / num_partitions / l3_config.num_slices / l3_config.num_banks / delta);
-            printf(" L2$ Stalls: %0.2f%%\n", 100.0 * l2_delta_log.mshr_stalls / num_tms / l2_config.num_banks / delta);
+            printf(" L2$ Stalls: %0.2f%%\n", 100.0 * l2_delta_log.mshr_stalls / l2s.size() / l2_config.num_slices / l2_config.num_banks / delta);
             printf("L1d$ Stalls: %0.2f%%\n", 100.0 * l1d_delta_log.mshr_stalls / num_tms / l1d_config.num_banks / delta);
             printf("                            \n");
             printf("L3$  Occ: %0.2f%%\n", 100.0 * l3_delta_log.get_total() / num_partitions / l3_config.num_slices / l3_config.num_banks / delta);
-            printf("L2$  Occ: %0.2f%%\n", 100.0 * l2_delta_log.get_total() / num_partitions / l2_config.num_slices / l2_config.num_banks / delta);
+            printf("L2$  Occ: %0.2f%%\n", 100.0 * l2_delta_log.get_total() / l2s.size() / l2_config.num_slices / l2_config.num_banks / delta);
             printf("L1d$ Occ: %0.2f%%\n", 100.0 * l1d_delta_log.get_total() / num_tms / l1d_config.num_banks / delta);
             printf("                            \n");
 
