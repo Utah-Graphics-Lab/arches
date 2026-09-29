@@ -230,6 +230,11 @@ public:
 		//Simulation
 		set_param("logging-interval", 10000);
 
+		//Live stream to an external visualizer (live-port=0 disables)
+		set_param("live-host", "127.0.0.1");
+		set_param("live-port", 7878);
+		set_param("live-frame-interval", 10); //in logging intervals, 0 = final frame only
+
 		//Arch
 		set_param("arch-name", "TRaX");
 		set_param("max-rays", 128);

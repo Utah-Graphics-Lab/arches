@@ -6,6 +6,7 @@
 #include "trax-kernel/include.hpp"
 #include "trax-kernel/intersect.hpp"
 #include "units/unit-texture.hpp"
+#include "util/live-stream.hpp"
 
 namespace Arches {
 
@@ -768,6 +769,85 @@ static void run_sim_trax(SimulationConfig& sim_config)
     float peak_l2_bandwidth = num_partitions * l2_config.num_banks * MemoryRequest::MAX_SIZE;
     float peak_l1d_bandwidth = num_tms * l1d_config.num_banks * MemoryRequest::MAX_SIZE;
 
+	//live stream to an external visualizer
+	LiveStream live_stream(sim_config.get_string("live-host"), (uint16_t)sim_config.get_int("live-port"));
+	uint live_frame_interval = sim_config.get_int("live-frame-interval");
+	uint live_interval_index = 0;
+	constexpr uint num_instr_types = (uint)ISA::RISCV::InstrType::NUM_TYPES;
+	uint64_t live_tp_prev[3][num_instr_types] = {};
+
+	std::vector<uint8_t> live_framebuffer;
+	auto read_framebuffer = [&]() -> const uint8_t*
+	{
+		paddr_t fb_start = (paddr_t)kernel_args.framebuffer;
+		paddr_t fb_end = fb_start + (paddr_t)kernel_args.framebuffer_size * sizeof(uint32_t);
+		paddr_t start = fb_start / partition_stride * partition_stride;
+		live_framebuffer.resize(fb_end - start + partition_stride);
+		for(paddr_t addr = start; addr < fb_end; addr += partition_stride)
+			drams[xbar.get_partition(addr)]->direct_read(live_framebuffer.data() + (addr - start), partition_stride, xbar.strip_partition_bits(addr));
+		return live_framebuffer.data() + (fb_start - start);
+	};
+
+	auto write_cache_log = [](JsonWriter& json, const char* key, const UnitL1Cache::Log& log)
+	{
+		json.begin_object(key)
+			.value("hits", log.hits)
+			.value("misses", log.misses)
+			.value("half_misses", log.half_misses)
+			.value("uncached_requests", log.uncached_requests)
+			.value("mshr_stalls", log.mshr_stalls)
+			.value("bytes_read", log.bytes_read)
+			.value("tag_array_access", log.tag_array_access)
+			.value("data_array_reads", log.data_array_reads)
+			.value("data_array_writes", log.data_array_writes)
+			.end_object();
+	};
+
+	auto write_cache_config = [](JsonWriter& json, const char* key, const UnitL1Cache::Configuration& config, uint num_units, float peak_bandwidth)
+	{
+		json.begin_object(key)
+			.value("units", num_units)
+			.value("size", config.size)
+			.value("associativity", config.associativity)
+			.value("slices", config.num_slices)
+			.value("banks", config.num_banks)
+			.value("mshrs", config.num_mshr)
+			.value("latency", config.latency)
+			.value("peak_bytes_per_cycle", (double)peak_bandwidth)
+			.end_object();
+	};
+
+	if(live_stream.connected())
+	{
+		JsonWriter json;
+		json.begin_object()
+			.value("version", 1u)
+			.value("arch", sim_config.get_string("arch-name"))
+			.value("scene", sim_config.get_string("scene-name"))
+			.value("core_clock_hz", core_clock)
+			.value("dram_clock_hz", dram_clock)
+			.value("logging_interval", delta)
+			.value("num_tms", num_tms)
+			.value("num_tps", num_tps)
+			.value("num_threads", num_threads)
+			.value("num_partitions", num_partitions)
+			.value("framebuffer_width", kernel_args.framebuffer_width)
+			.value("framebuffer_height", kernel_args.framebuffer_height)
+			.value("has_rt_core", (uint)!rtcs.empty())
+			.begin_object("dram")
+				.value("units", (uint)drams.size())
+				.value("peak_bytes_per_cycle", (double)peak_dram_bandwidth)
+			.end_object();
+		write_cache_config(json, "l3", l3_config, (uint)l3s.size(), peak_l3_bandwidth);
+		write_cache_config(json, "l2", l2_config, (uint)l2s.size(), peak_l2_bandwidth);
+		write_cache_config(json, "l1d", l1d_config, (uint)l1ds.size(), peak_l1d_bandwidth);
+		json.begin_array("instr_types");
+		for(uint i = 0; i < num_instr_types; ++i)
+			json.value(nullptr, ISA::RISCV::InstructionTypeNameDatabase::get_instance()[(ISA::RISCV::InstrType)i]);
+		json.end_array().end_object();
+		live_stream.send(LiveStream::MessageType::HELLO, json.str());
+	}
+
 	//peak_dram_bandwidth = 32 * core_clock * num_partitions;
 	//peak_l2_bandwidth = 32 * num_tms / 2;
 
@@ -813,6 +893,67 @@ static void run_sim_trax(SimulationConfig& sim_config)
                 printf("MRays/s: %.0f\n\n", rtc_delta_log.rays / delta_ns * 1000.0);
                 rtc_delta_log.print(rtcs.size());
             }
+
+		if(live_stream.connected())
+		{
+			//TP logs are not reset per interval (the final report and profile rely on them), so diff running totals instead
+			uint64_t tp_totals[3][num_instr_types] = {};
+			for(auto& tp : tps)
+				for(uint i = 0; i < num_instr_types; ++i)
+				{
+					tp_totals[0][i] += tp->log.instruction_counters[i];
+					tp_totals[1][i] += tp->log._resource_stall_counters[i];
+					tp_totals[2][i] += tp->log._data_stall_counters[i];
+				}
+			uint64_t tp_delta[3][num_instr_types];
+			for(uint j = 0; j < 3; ++j)
+				for(uint i = 0; i < num_instr_types; ++i)
+				{
+					tp_delta[j][i] = tp_totals[j][i] - live_tp_prev[j][i];
+					live_tp_prev[j][i] = tp_totals[j][i];
+				}
+
+			JsonWriter json;
+			json.begin_object()
+				.value("cycle", (int64_t)simulator.current_cycle)
+				.value("cycles", delta)
+				.value("wall_time_s", simulation_time)
+				.value("threads_launched", (uint64_t)atomic_regs.iregs[0])
+				.begin_object("dram")
+					.value("loads", dram_delta_log.loads)
+					.value("stores", dram_delta_log.stores)
+					.value("bytes_read", dram_delta_log.bytes_read)
+					.value("bytes_written", dram_delta_log.bytes_written)
+					.value("unique_loads", dram_delta_log.unique_loads)
+					.value("unique_rows", dram_delta_log.unique_rows)
+				.end_object();
+			write_cache_log(json, "l3", l3_delta_log);
+			write_cache_log(json, "l2", l2_delta_log);
+			write_cache_log(json, "l1d", l1d_delta_log);
+			json.begin_object("tu")
+					.value("texels", tu_delta_log.texels)
+					.value("loads", tu_delta_log.loads)
+				.end_object()
+				.begin_object("rtc")
+					.value("rays", rtc_delta_log.rays)
+					.value("nodes", rtc_delta_log.nodes)
+					.value("strips", rtc_delta_log.strips)
+					.value("tris", rtc_delta_log.tris)
+					.value("restarts", rtc_delta_log.restarts)
+					.value("hits_returned", rtc_delta_log.hits_returned)
+				.end_object()
+				.begin_object("tp")
+					.counters("issued", tp_delta[0], num_instr_types)
+					.counters("resource_stalls", tp_delta[1], num_instr_types)
+					.counters("data_stalls", tp_delta[2], num_instr_types)
+				.end_object()
+				.end_object();
+			live_stream.send(LiveStream::MessageType::STATS, json.str());
+
+			++live_interval_index;
+			if(live_frame_interval != 0 && live_interval_index % live_frame_interval == 0)
+				live_stream.send_frame(simulator.current_cycle, kernel_args.framebuffer_width, kernel_args.framebuffer_height, read_framebuffer());
+		}
         });
 
 	auto stop = std::chrono::high_resolution_clock::now();
@@ -894,6 +1035,23 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	printf("Simulation rate: %.2f KHz\n", simulator.current_cycle / simulation_time / 1000.0);
 	printf("Simulation time: %.0f s\n", simulation_time);
 	printf("MSIPS: %.2f\n", simulator.current_cycle * tps.size() / simulation_time / 1'000'000.0);
+
+	if(live_stream.connected())
+	{
+		live_stream.send_frame(simulator.current_cycle, kernel_args.framebuffer_width, kernel_args.framebuffer_height, vec_mem.data() + (size_t)kernel_args.framebuffer);
+
+		JsonWriter json;
+		json.begin_object()
+			.value("cycles", (int64_t)frame_cycles)
+			.value("frame_time_s", frame_time)
+			.value("wall_time_s", simulation_time)
+			.value("power_w", (double)total_power)
+			.value("energy_j", (double)total_energy)
+			.value("rays", rtcs.empty() ? (uint64_t)kernel_args.framebuffer_size : rtc_log.rays)
+			.end_object();
+		live_stream.send(LiveStream::MessageType::DONE, json.str());
+		live_stream.finish();
+	}
 
 	stbi_flip_vertically_on_write(true);
 	stbi_write_png("out.png", (int)kernel_args.framebuffer_width, (int)kernel_args.framebuffer_height, 4, vec_mem.data() + (size_t)kernel_args.framebuffer, 0);
