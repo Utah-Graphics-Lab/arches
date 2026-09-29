@@ -88,6 +88,21 @@ const static InstructionInfo isa_custom0_000_imm[8] =
 		fr[19].f32 = hit.bc[1];
 		fr[20].u32 = hit.id;
 	}),
+	InstructionInfo(0x3, "BaryInterp3", InstrType::CUSTOM4, Encoding::U, RegFile::FLOAT, EXEC_DECL
+	{
+		Register32* fr = unit->float_regs->registers;
+
+		rtm::vec3 a0(fr[0].f32, fr[1].f32, fr[2].f32);
+		rtm::vec3 a1(fr[3].f32, fr[4].f32, fr[5].f32);
+		rtm::vec3 a2(fr[6].f32, fr[7].f32, fr[8].f32);
+		rtm::vec2 bc(fr[9].f32, fr[10].f32);
+
+		rtm::vec3 a = a0 * bc.x + a1 * bc.y + a2 * (1.0f - bc.x - bc.y);
+
+		fr[28].f32 = a.x;
+		fr[29].f32 = a.y;
+		fr[30].f32 = a.z;
+	})
 };
 
 const static InstructionInfo isa_custom0_funct3[8] =
@@ -541,6 +556,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM1] = "BOXISECT";
 	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM2] = "TRIISECT";
 	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM3] = "SAMPLE2D";
+	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM4] = "BARYINT3";
 	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM7] = "TRACERAY";
 	ISA::RISCV::isa[ISA::RISCV::CUSTOM_OPCODE0] = ISA::RISCV::TRaX::custom0;
 

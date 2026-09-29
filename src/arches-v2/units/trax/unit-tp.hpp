@@ -41,6 +41,17 @@ private:
 				if(float_regs_pending[instr.rd + i])
 					return float_regs_pending[instr.rd + i];
 		}
+		else if(instr_info.instr_type == ISA::RISCV::InstrType::CUSTOM4) //BARYINT3
+		{
+			const uint num_regs = (sizeof(rtm::vec3) * 3 + sizeof(rtm::vec2)) / sizeof(float);
+			for(uint i = 0; i < num_regs; ++i)
+			{
+				if(float_regs_pending[i])
+				{
+					return float_regs_pending[i];
+				}
+			}
+		}
 		else if(instr_info.instr_type == ISA::RISCV::InstrType::CUSTOM7) //TRACE RAY
 		{
 			for(uint i = 0; i < sizeof(rtm::Ray) / sizeof(float); ++i)

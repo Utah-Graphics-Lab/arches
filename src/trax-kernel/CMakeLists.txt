@@ -8,7 +8,8 @@ if(LINUX)
 endif()
 
 file(GLOB FILES *.hpp *.cpp)
-add_executable(${PROJECT_NAME} ${FILES})
+add_executable(${PROJECT_NAME} ${FILES}
+        main.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/trax-kernel)
 target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
