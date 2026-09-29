@@ -852,6 +852,64 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	//peak_dram_bandwidth = 32 * core_clock * num_partitions;
 	//peak_l2_bandwidth = 32 * num_tms / 2;
 
+	auto send_live_stats = [&](uint cycles, double wall_time, const UnitDRAM::Log& dram_delta_log, const UnitL3Cache::Log& l3_delta_log, const UnitL2Cache::Log& l2_delta_log,
+		const UnitL1Cache::Log& l1d_delta_log, const Units::UnitTexture::Log& tu_delta_log, const UnitRTCore::Log& rtc_delta_log)
+	{
+		//TP logs are not reset per interval (the final report and profile rely on them), so diff running totals instead
+		uint64_t tp_totals[3][num_instr_types] = {};
+		for(auto& tp : tps)
+			for(uint i = 0; i < num_instr_types; ++i)
+			{
+				tp_totals[0][i] += tp->log.instruction_counters[i];
+				tp_totals[1][i] += tp->log._resource_stall_counters[i];
+				tp_totals[2][i] += tp->log._data_stall_counters[i];
+			}
+		uint64_t tp_delta[3][num_instr_types];
+		for(uint j = 0; j < 3; ++j)
+			for(uint i = 0; i < num_instr_types; ++i)
+			{
+				tp_delta[j][i] = tp_totals[j][i] - live_tp_prev[j][i];
+				live_tp_prev[j][i] = tp_totals[j][i];
+			}
+
+		JsonWriter json;
+		json.begin_object()
+			.value("cycle", (int64_t)simulator.current_cycle)
+			.value("cycles", cycles)
+			.value("wall_time_s", wall_time)
+			.value("threads_launched", (uint64_t)atomic_regs.iregs[0])
+			.begin_object("dram")
+				.value("loads", dram_delta_log.loads)
+				.value("stores", dram_delta_log.stores)
+				.value("bytes_read", dram_delta_log.bytes_read)
+				.value("bytes_written", dram_delta_log.bytes_written)
+				.value("unique_loads", dram_delta_log.unique_loads)
+				.value("unique_rows", dram_delta_log.unique_rows)
+			.end_object();
+		write_cache_log(json, "l3", l3_delta_log);
+		write_cache_log(json, "l2", l2_delta_log);
+		write_cache_log(json, "l1d", l1d_delta_log);
+		json.begin_object("tu")
+				.value("texels", tu_delta_log.texels)
+				.value("loads", tu_delta_log.loads)
+			.end_object()
+			.begin_object("rtc")
+				.value("rays", rtc_delta_log.rays)
+				.value("nodes", rtc_delta_log.nodes)
+				.value("strips", rtc_delta_log.strips)
+				.value("tris", rtc_delta_log.tris)
+				.value("restarts", rtc_delta_log.restarts)
+				.value("hits_returned", rtc_delta_log.hits_returned)
+			.end_object()
+			.begin_object("tp")
+				.counters("issued", tp_delta[0], num_instr_types)
+				.counters("resource_stalls", tp_delta[1], num_instr_types)
+				.counters("data_stalls", tp_delta[2], num_instr_types)
+			.end_object()
+			.end_object();
+		live_stream.send(LiveStream::MessageType::STATS, json.str());
+	};
+
     auto start = std::chrono::high_resolution_clock::now();
     simulator.execute(delta, [&]() -> void
         {
@@ -900,59 +958,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 		if(live_stream.connected())
 		{
-			//TP logs are not reset per interval (the final report and profile rely on them), so diff running totals instead
-			uint64_t tp_totals[3][num_instr_types] = {};
-			for(auto& tp : tps)
-				for(uint i = 0; i < num_instr_types; ++i)
-				{
-					tp_totals[0][i] += tp->log.instruction_counters[i];
-					tp_totals[1][i] += tp->log._resource_stall_counters[i];
-					tp_totals[2][i] += tp->log._data_stall_counters[i];
-				}
-			uint64_t tp_delta[3][num_instr_types];
-			for(uint j = 0; j < 3; ++j)
-				for(uint i = 0; i < num_instr_types; ++i)
-				{
-					tp_delta[j][i] = tp_totals[j][i] - live_tp_prev[j][i];
-					live_tp_prev[j][i] = tp_totals[j][i];
-				}
-
-			JsonWriter json;
-			json.begin_object()
-				.value("cycle", (int64_t)simulator.current_cycle)
-				.value("cycles", delta)
-				.value("wall_time_s", simulation_time)
-				.value("threads_launched", (uint64_t)atomic_regs.iregs[0])
-				.begin_object("dram")
-					.value("loads", dram_delta_log.loads)
-					.value("stores", dram_delta_log.stores)
-					.value("bytes_read", dram_delta_log.bytes_read)
-					.value("bytes_written", dram_delta_log.bytes_written)
-					.value("unique_loads", dram_delta_log.unique_loads)
-					.value("unique_rows", dram_delta_log.unique_rows)
-				.end_object();
-			write_cache_log(json, "l3", l3_delta_log);
-			write_cache_log(json, "l2", l2_delta_log);
-			write_cache_log(json, "l1d", l1d_delta_log);
-			json.begin_object("tu")
-					.value("texels", tu_delta_log.texels)
-					.value("loads", tu_delta_log.loads)
-				.end_object()
-				.begin_object("rtc")
-					.value("rays", rtc_delta_log.rays)
-					.value("nodes", rtc_delta_log.nodes)
-					.value("strips", rtc_delta_log.strips)
-					.value("tris", rtc_delta_log.tris)
-					.value("restarts", rtc_delta_log.restarts)
-					.value("hits_returned", rtc_delta_log.hits_returned)
-				.end_object()
-				.begin_object("tp")
-					.counters("issued", tp_delta[0], num_instr_types)
-					.counters("resource_stalls", tp_delta[1], num_instr_types)
-					.counters("data_stalls", tp_delta[2], num_instr_types)
-				.end_object()
-				.end_object();
-			live_stream.send(LiveStream::MessageType::STATS, json.str());
+			send_live_stats(delta, simulation_time, dram_delta_log, l3_delta_log, l2_delta_log, l1d_delta_log, tu_delta_log, rtc_delta_log);
 
 			++live_interval_index;
 			if(live_frame_interval != 0 && live_interval_index % live_frame_interval == 0)
@@ -961,6 +967,20 @@ static void run_sim_trax(SimulationConfig& sim_config)
         });
 
 	auto stop = std::chrono::high_resolution_clock::now();
+
+	//send the final partial interval so the streamed intervals sum to the end-of-run totals
+	uint tail_cycles = delta ? (uint)(simulator.current_cycle % delta) : 0;
+	if(live_stream.connected() && tail_cycles != 0)
+	{
+		UnitDRAM::Log dram_delta_log = delta_log(dram_log, drams);
+		UnitL3Cache::Log l3_delta_log = delta_log(l3_log, l3s);
+		UnitL2Cache::Log l2_delta_log = delta_log(l2_log, l2s);
+		UnitL1Cache::Log l1d_delta_log = delta_log(l1d_log, l1ds);
+		UnitRTCore::Log rtc_delta_log = delta_log(rtc_log, rtcs);
+		Units::UnitTexture::Log tu_delta_log = delta_log(tu_log, tus);
+		double wall_time = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count() / 1000.0;
+		send_live_stats(tail_cycles, wall_time, dram_delta_log, l3_delta_log, l2_delta_log, l1d_delta_log, tu_delta_log, rtc_delta_log);
+	}
 
 	for(uint addr = 0; addr < (256 << 20); addr += partition_stride)
 		drams[xbar.get_partition(addr)]->direct_read(vec_mem.data() + addr, partition_stride, xbar.strip_partition_bits(addr));
