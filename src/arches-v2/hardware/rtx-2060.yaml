@@ -1,0 +1,35 @@
+# RTX 2060 (Turing)
+# Copy over example.yaml to use, see that file for what each parameter means.
+core-clock-mhz: 1365
+dram-clock-mhz: 3500
+num-tms: 30
+num-tps: 64
+num-threads: 1
+stack-size: 512
+rtc-max-rays: 64
+
+# DRAM (dram-config is a file in units/ramulator/config-files)
+num-partitions: 6
+dram-config: gddr6_14000_config.yaml
+dram-latency: 92
+
+# L2$ (policy is LRU, LRU_RANDOM, FIFO or FIFO_RANDOM)
+l2-size-kb: 512
+l2-associativity: 16
+l2-slices: 4
+l2-mshr: 192
+l2-subentries: 4
+l2-latency: 160
+l2-miss-alloc: 1
+l2-block-prefetch: 0
+l2-policy: LRU
+
+# L1d$
+l1d-size-kb: 64
+l1d-associativity: 32
+l1d-banks: 16
+l1d-mshr: 256
+l1d-subentries: 16
+l1d-latency: 20
+l1d-miss-alloc: 1
+l1d-policy: LRU

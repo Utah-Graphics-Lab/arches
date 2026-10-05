@@ -1,0 +1,35 @@
+# TRaX 1.0
+# Copy over example.yaml to use, see that file for what each parameter means.
+core-clock-mhz: 1000
+dram-clock-mhz: 2000
+num-tms: 32
+num-tps: 32
+num-threads: 1
+stack-size: 4096
+rtc-max-rays: 32
+
+# DRAM (dram-config is a file in units/ramulator/config-files)
+num-partitions: 4
+dram-config: gddr6_pch_config.yaml
+dram-latency: 1
+
+# L2$ (policy is LRU, LRU_RANDOM, FIFO or FIFO_RANDOM)
+l2-size-kb: 256
+l2-associativity: 16
+l2-slices: 1
+l2-mshr: 1
+l2-subentries: 1
+l2-latency: 10
+l2-miss-alloc: 0
+l2-block-prefetch: 0
+l2-policy: LRU
+
+# L1d$
+l1d-size-kb: 32
+l1d-associativity: 4
+l1d-banks: 8
+l1d-mshr: 256
+l1d-subentries: 16
+l1d-latency: 1
+l1d-miss-alloc: 0
+l1d-policy: LRU

@@ -1,0 +1,35 @@
+# RTX 4090 ish
+# Copy over example.yaml to use, see that file for what each parameter means.
+core-clock-mhz: 2235
+dram-clock-mhz: 5250
+num-tms: 128
+num-tps: 128
+num-threads: 12
+stack-size: 512
+rtc-max-rays: 64
+
+# DRAM (dram-config is a file in units/ramulator/config-files)
+num-partitions: 12
+dram-config: gddr6x_21000_config.yaml
+dram-latency: 254
+
+# L2$ (policy is LRU, LRU_RANDOM, FIFO or FIFO_RANDOM)
+l2-size-kb: 6144
+l2-associativity: 16
+l2-slices: 6
+l2-mshr: 256
+l2-subentries: 4
+l2-latency: 187
+l2-miss-alloc: 1
+l2-block-prefetch: 1
+l2-policy: LRU
+
+# L1d$
+l1d-size-kb: 128
+l1d-associativity: 32
+l1d-banks: 8
+l1d-mshr: 512
+l1d-subentries: 16
+l1d-latency: 39
+l1d-miss-alloc: 1
+l1d-policy: LRU
