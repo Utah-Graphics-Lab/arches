@@ -5,6 +5,9 @@
 #if defined BUILD_PLATFORM_WINDOWS
 	#define popcnt64(mask) __popcnt64(mask)
 	#define rotr64(mask, n) _rotr64(mask, n)
+#elif defined BUILD_ARCH_aarch64
+	#define popcnt64(mask) __builtin_popcountll(mask)
+	#define rotr64(mask, n) (((mask) >> (n)) | ((mask) << (64 - (n))))
 #elif defined BUILD_PLATFORM_LINUX
 	#define popcnt64(mask) _popcnt64(mask)
 	#define rotr64(mask, n) _lrotr(mask, n)
@@ -30,14 +33,20 @@ inline Arches::paddr_t align_to(size_t alignment, Arches::paddr_t paddr)
 
 inline uint ctz(uint64_t mask)
 {
-
-
+#if defined BUILD_ARCH_aarch64
+	return __builtin_ctzll(mask);
+#else
 	return _tzcnt_u64(mask);
+#endif
 }
 
 inline uint clz(uint64_t mask)
 {
+#if defined BUILD_ARCH_aarch64
+	return mask ? __builtin_clzll(mask) : 64;
+#else
 	return _lzcnt_u64(mask);
+#endif
 }
 
 
@@ -53,12 +62,32 @@ inline uint64_t rotr(uint64_t mask, uint n)
 
 inline uint64_t pdep(uint64_t data, uint64_t mask)
 {
+#if defined BUILD_ARCH_aarch64
+	uint64_t result = 0;
+	for (uint64_t bit = 1; mask; bit <<= 1) {
+		if (data & bit)
+			result |= mask & (-mask);
+		mask &= mask - 1;
+	}
+	return result;
+#else
 	return _pdep_u64(data, mask);
+#endif
 }
 
 inline uint64_t pext(uint64_t data, uint64_t mask)
 {
+#if defined BUILD_ARCH_aarch64
+	uint64_t result = 0;
+	for (uint64_t bit = 1; mask; bit <<= 1) {
+		if (data & (mask & (-mask)))
+			result |= bit;
+		mask &= mask - 1;
+	}
+	return result;
+#else
 	return _pext_u64(data, mask);
+#endif
 }
 
 struct BitStack27
