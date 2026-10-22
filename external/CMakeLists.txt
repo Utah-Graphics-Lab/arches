@@ -1,62 +1,40 @@
-add_subdirectory(ramulator2 EXCLUDE_FROM_ALL)
-
-# cmake for ramulator
-function( build_source_group )
-	file(GLOB_RECURSE files ${CMAKE_CURRENT_SOURCE_DIR}/*.* )
-	list(REMOVE_ITEM files "CMakeLists.txt")
-	source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX "[src]" FILES ${files})
-endfunction()
-
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-
-file(GLOB_RECURSE ALL_INCLUDE CONFIGURE_DEPENDS "*.hpp" "*.h")
-file(GLOB_RECURSE ALL_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.cc")
-
-set(EXCLUDED_FOLDERS "/dram_controller/impl/plugin" "/example/impl" "/resources/")
-set(NEW_INCLUDE "")
-set(NEW_SOURCE "")
-foreach(Source IN LISTS ALL_INCLUDE)
-  set(should_exclude FALSE)
-  foreach(EXCLUDED_FOLDER ${EXCLUDED_FOLDERS})
-    get_filename_component(SourceDir ${Source} DIRECTORY)
-    string(FIND ${SourceDir} ${EXCLUDED_FOLDER} IsExcludedFolder)
-    if(${IsExcludedFolder} GREATER -1)
-      set(should_exclude TRUE)
-      break()
-    endif()
-  endforeach()
-
-  if (NOT should_exclude)
-    list(APPEND NEW_INCLUDE ${Source})
-  endif()
-endforeach()
-
-foreach(Source IN LISTS ALL_SOURCES)
-  set(should_exclude FALSE)
-  foreach(EXCLUDED_FOLDER ${EXCLUDED_FOLDERS})
-    get_filename_component(SourceDir ${Source} DIRECTORY)
-    string(FIND ${SourceDir} ${EXCLUDED_FOLDER} IsExcludedFolder)
-    if(${IsExcludedFolder} GREATER -1)
-      set(should_exclude TRUE)
-      break()
-    endif()
-  endforeach()
-
-  if (NOT should_exclude)
-    list(APPEND NEW_SOURCES ${Source})
-  endif()
-endforeach()
-
-list(REMOVE_ITEM NEW_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/ramulator2/src/base/config.cpp")
-
-add_library(Ramulator STATIC ${NEW_INCLUDE} ${NEW_SOURCES})
-target_include_directories(Ramulator PUBLIC ${PROJECT_SOURCE_DIR}/external/ramulator2/src)
-target_include_directories(Ramulator PUBLIC ${argparse_SOURCE_DIR}/include)
-target_include_directories(Ramulator PUBLIC ${yaml-cpp_SOURCE_DIR}/include)
-target_include_directories(Ramulator PUBLIC ${spdlog_SOURCE_DIR}/include)
-target_link_libraries(
-  Ramulator 
-  PUBLIC yaml-cpp
-  PUBLIC spdlog
+set(ARCHES_RAMULATOR_SOURCES
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/base/factory.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/base/logging.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/base/request.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/base/stats.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/base/utils.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/frontend/impl/external_wrapper/gem5_frontend.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/translation/impl/no_translation.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/memory_system/impl/generic_DRAM_system.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/dram_controller/impl/rowpolicy/basic_rowpolicies.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/dram_controller/impl/scheduler/generic_scheduler.cpp"
+  "${PROJECT_SOURCE_DIR}/external/ramulator2/src/dram_controller/impl/refresh/all_bank_refresh.cpp"
+  "${PROJECT_SOURCE_DIR}/src/arches-v2/units/ramulator/config.cpp"
+  "${PROJECT_SOURCE_DIR}/src/arches-v2/units/ramulator/unit-addr-mapper.cpp"
+  "${PROJECT_SOURCE_DIR}/src/arches-v2/units/ramulator/unit-GDDR6.cpp"
+  "${PROJECT_SOURCE_DIR}/src/arches-v2/units/ramulator/unit-generic-dram-controller.cpp"
 )
-build_source_group()
+
+# Ramulator implementations self-register through translation-unit static initializers.
+# Use an object library so the linker cannot drop registration-only objects from
+# a static archive before Factory::create_* looks them up at runtime.
+add_library(arches_ramulator OBJECT ${ARCHES_RAMULATOR_SOURCES})
+add_library(arches::ramulator ALIAS arches_ramulator)
+
+target_compile_features(arches_ramulator PUBLIC cxx_std_20)
+
+target_include_directories(arches_ramulator
+  PUBLIC
+    "${PROJECT_SOURCE_DIR}/external"
+    "${PROJECT_SOURCE_DIR}/external/ramulator2/src"
+)
+
+target_link_libraries(arches_ramulator
+  PUBLIC
+    ${ARCHES_YAML_CPP_TARGET}
+    ${ARCHES_SPDLOG_TARGET}
+)
+
+set_target_properties(arches_ramulator PROPERTIES FOLDER "Libraries")
+source_group(TREE "${PROJECT_SOURCE_DIR}" FILES ${ARCHES_RAMULATOR_SOURCES})

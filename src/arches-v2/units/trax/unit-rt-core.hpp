@@ -19,6 +19,14 @@ public:
 		paddr_t tri_base_addr{0x0ull};
 		paddr_t vrt_base_addr{0x0ull};
 
+		//Each pipline is clocked once per cycle, so the counts below set throughput and the
+		//latencies set depth. The two are independent.
+		uint num_isect_piplines{2}; //scheduler/stack ops issued per cycle
+		uint num_node_piplines{2};
+		uint num_tri_piplines{2};
+		uint node_pipline_latency{12};
+		uint tri_pipline_latency{22};
+
 		UnitMemoryBase* cache{nullptr};
 		uint cache_port{0};
 		uint num_cache_ports{1};
@@ -122,14 +130,18 @@ private:
 	std::set<uint> _free_ray_ids;
 	std::vector<RayState> _ray_states;
 
+	//Each pipline is a separate unit clocked once per cycle, so widening these changes throughput
+	//without changing the modeled latency.
+	uint _num_isect_piplines{2};
+
 	//node pipline
 	std::queue<uint> _node_isect_queue;
-	LatencyFIFO<uint> _box_pipline;
+	std::vector<LatencyFIFO<uint>> _box_piplines;
 	uint _box_issue_count{0};
 
 	//tri pipline
 	std::queue<uint> _tri_isect_queue;
-	LatencyFIFO<uint> _tri_pipline;
+	std::vector<LatencyFIFO<uint>> _tri_piplines;
 	uint _tri_issue_count{0};
 
 	//meta data
@@ -191,8 +203,12 @@ private:
 	void _read_requests();
 	void _read_returns();
 	void _schedule_ray();
-	void _simualte_node_pipline();
-	void _simualte_tri_pipline();
+
+	// issue half runs once per issue slot
+	void _issue_node_isect(uint pipline_index);
+	void _issue_tri_isect(uint pipline_index);
+	void _retire_node_isect(uint pipline_index);
+	void _retire_tri_isect(uint pipline_index);
 
 	void _issue_requests();
 	void _issue_returns();

@@ -167,9 +167,8 @@ typedef Units::TRaX::UnitRTCore<rtm::CWBVH::Node, PrimBlocks> UnitRTCore;
 static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const Units::UnitCrossbar& xbar, paddr_t& heap_address, const SimulationConfig& sim_config, uint page_size)
 {
 	std::string scene_name = sim_config.get_string("scene-name");
-	std::string project_folder = get_project_folder_path();
-	std::string datasets_folder = sim_config.get_string("dataset-dir") + "/";
-	std::string cache_folder = sim_config.get_string("dataset-dir") + "/cache/";
+	std::string datasets_folder = ensure_trailing_slash(sim_config.get_string("dataset-dir"));
+	std::string cache_folder = datasets_folder + "cache/";
 
 	TRaXKernelArgs args{};
 	args.framebuffer_width = sim_config.get_int("framebuffer-width");
@@ -243,8 +242,6 @@ static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const
 
 static void run_sim_trax(SimulationConfig& sim_config)
 {
-	std::string project_folder_path = get_project_folder_path();
-
 #if 0 //RTX 4090 ish
 	//Compute
 	double core_clock = 2235.0e6;
@@ -261,7 +258,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = get_config_folder_path() + "gddr6x_21000_config.yaml";
+	dram_config.config_path = join_path(sim_config.get_string("config-dir"), "gddr6x_21000_config.yaml");
 	dram_config.size = 1ull << 30; //1GB per partition
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 254;
@@ -338,7 +335,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = get_config_folder_path() + "gddr6_14000_config.yaml";
+	dram_config.config_path = join_path(sim_config.get_string("config-dir"), "gddr6_14000_config.yaml");
 	dram_config.size = 1ull << 30; //1GB per partition
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 254;
@@ -423,7 +420,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = get_config_folder_path() + "gddr6_14000_config.yaml";
+	dram_config.config_path = join_path(sim_config.get_string("config-dir"), "gddr6_14000_config.yaml");
 	dram_config.size = 1ull << 30; //1GB
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 92;
@@ -496,7 +493,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 
 	//DRAM
 	UnitDRAM::Configuration dram_config;
-	dram_config.config_path = get_config_folder_path() + "gddr6_pch_config.yaml";
+	dram_config.config_path = join_path(sim_config.get_string("config-dir"), "gddr6_pch_config.yaml");
 	dram_config.size = 1ull << 30; //1GB
 	dram_config.clock_ratio = dram_clock / core_clock;
 	dram_config.latency = 1;
@@ -551,7 +548,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	UnitL1Cache::PowerConfig l1d_power_config;
 #endif
 
-	ELF elf(project_folder_path + "src/trax-kernel/riscv/kernel");
+	ELF elf(sim_config.get_string("kernel-path"));
 
 	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM0] = "FCHTHRD";
 	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM1] = "BOXISECT";
@@ -1216,7 +1213,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	}
 
 	stbi_flip_vertically_on_write(true);
-	stbi_write_png("out.png", (int)kernel_args.framebuffer_width, (int)kernel_args.framebuffer_height, 4, vec_mem.data() + (size_t)kernel_args.framebuffer, 0);
+	stbi_write_png("arches-out.png", (int)kernel_args.framebuffer_width, (int)kernel_args.framebuffer_height, 4, vec_mem.data() + (size_t)kernel_args.framebuffer, 0);
 
     for(auto& tp : tps) delete tp;
     for(auto& sfu : sfus) delete sfu;
@@ -1231,7 +1228,11 @@ static void run_sim_trax(SimulationConfig& sim_config)
 int main(int argc, char* argv[])
 {
 	Arches::set_full_exe_name(argv[0]);
-	Arches::SimulationConfig sim_config(argc, argv);
+	Arches::SimulationConfig sim_config;
+	sim_config.set_param("config-dir", Arches::get_default_config_dir());
+	sim_config.set_param("kernel-path", Arches::get_default_kernel_path());
+	sim_config.parse(argc, argv);
+
 	Arches::TRaX::run_sim_trax(sim_config);
 	return 0;
 }

@@ -1,9 +1,10 @@
 {
-  "name" : "arches-v2",
-  "version-string" : "1.0.0",
-  "builtin-baseline" : "f9ffbaa46ad8e284b2b74919f7e0ba259564d424",
-  "dependencies" : [ {
-    "name" : "tbb",
-    "version>=" : "2022.3.0"
-  } ]
+  "name": "arches",
+  "version-string": "0.1.0",
+  "builtin-baseline": "1d021d236ed1da9923826f99f420bd0370e6aad0",
+  "dependencies": [
+    "tbb",
+    "yaml-cpp",
+    "spdlog"
+  ]
 }

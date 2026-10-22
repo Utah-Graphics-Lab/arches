@@ -31,6 +31,7 @@ mkdir build
 cd build
 cmake ..
 ```
+Or use [STARTUP_GUIDE.md](STARTUP_GUIDE.md) for the current CMake workflow, including Visual Studio setup, Linux setup, dependency installation, runtime layout, dataset paths, and kernel options.
 
 ## Setup (RISCV, Ubuntu Linux)
 Testing programs on the framework requires the use of a RISC-V Cross-Compiler. Fortunately, many many people have devoted numerous hours to getting a decent RISC-V cross compiler implemented using GCC; this is available [here](https://github.com/riscv/riscv-gnu-toolchain). 
