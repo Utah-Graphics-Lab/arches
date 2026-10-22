@@ -1231,6 +1231,10 @@ int main(int argc, char* argv[])
 	Arches::SimulationConfig sim_config;
 	sim_config.set_param("config-dir", Arches::get_default_config_dir());
 	sim_config.set_param("kernel-path", Arches::get_default_kernel_path());
+	sim_config.set_param("print-intervals", 1);
+	sim_config.set_param("live-host", "127.0.0.1");
+	sim_config.set_param("live-port", 7878);
+	sim_config.set_param("live-frame-interval", 10);
 	sim_config.parse(argc, argv);
 
 	Arches::TRaX::run_sim_trax(sim_config);

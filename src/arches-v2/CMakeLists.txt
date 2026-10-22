@@ -12,6 +12,7 @@ set(ARCHES_SOURCES
   "units/unit-tp.cpp"
   "util/elf.cpp"
   "util/file.cpp"
+  "util/live-stream.cpp"
   "util/stbi.cpp"
   "util/string.cpp"
 )
@@ -69,6 +70,7 @@ target_link_libraries(arches
     TBB::tbb
     Threads::Threads
     arches::ramulator
+    $<$<PLATFORM_ID:Windows>:ws2_32>
     $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_LESS:$<CXX_COMPILER_VERSION>,9.0>>:stdc++fs>
 )
 
