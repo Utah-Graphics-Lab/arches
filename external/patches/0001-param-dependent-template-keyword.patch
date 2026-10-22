@@ -1,0 +1,24 @@
+Add the 'template' disambiguator required for _ParamChainer<T>::_get().
+
+yaml-cpp declares Node::operator[] as a member template, so in the dependent
+context of _ParamChainer<T> the trailing .as<T>() must be spelled
+.template as<T>(). Compilers accepted the unqualified form for years; Clang 21
+(shipped as AppleClang 21) diagnoses it as an error, which breaks every
+translation unit that includes base/base.h.
+
+Reported upstream behaviour: not yet fixed on ramulator2 main as of the pinned
+commit e62c84a. Remove this patch once upstream carries the fix.
+
+diff --git a/src/base/param.h b/src/base/param.h
+index c626ee4..6df87a2 100644
+--- a/src/base/param.h
++++ b/src/base/param.h
+@@ -88,7 +88,7 @@ class _ParamChainer {
+ 
+       if (_config[_name]) {
+         try {
+-          return _config[_name].as<T>();
++          return _config[_name].template as<T>();
+         } catch (const YAML::BadConversion& e) {
+           throw ConfigurationError("Failed to parse Param \"{}\" for implementation \"{}\".", _name_prefix + _name, _impl_name);
+         }
