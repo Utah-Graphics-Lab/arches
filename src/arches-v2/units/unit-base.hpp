@@ -17,6 +17,7 @@ public:
 	virtual void clock_rise() = 0;
 	virtual void clock_fall() = 0;
 	virtual void reset() {};
+	virtual bool has_work() { return false; }
 };
 
 }}

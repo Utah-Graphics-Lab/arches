@@ -171,6 +171,8 @@ class GenericDRAMControllerA final : public IDRAMController, public Implementati
               if (req.addr == itr->addr)
               {
                   is_success = true;
+                  if (req.callback)
+                      req.callback(req); // merged into a buffered write, it gets no command of its own
                   break;
               }
           }
@@ -255,6 +257,8 @@ class GenericDRAMControllerA final : public IDRAMController, public Implementati
             pending.push_back(*req_it);
           } else if (req_it->type_id == Request::Type::Write) {
             // TODO: Add code to update statistics
+              if (req_it->callback)
+                  req_it->callback(*req_it); //a write is done once its last command is issued
           }
           buffer->remove(req_it);
         } else {

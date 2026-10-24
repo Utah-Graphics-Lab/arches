@@ -132,6 +132,15 @@ public:
 		CrossBar<MemoryReturn>::clock();
 	}
 
+	bool has_work() override
+	{
+		for (const MemoryRequest& request : _request_regs)
+			if (request.paddr != ~0x0ull) return true;
+		for (const MemoryReturn& ret : _return_regs)
+			if (ret.paddr != ~0x0ull) return true;
+		return CrossBar<MemoryRequest>::has_pending() || CrossBar<MemoryReturn>::has_pending();
+	}
+
 	bool request_port_write_valid(uint port_index) override
 	{
 		return CrossBar<MemoryRequest>::is_write_valid(port_index);

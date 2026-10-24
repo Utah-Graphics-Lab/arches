@@ -1,5 +1,6 @@
 #pragma once
 #include "stdafx.hpp"
+#include <bit>
 
 //cross platform intrinsics
 #if defined BUILD_PLATFORM_WINDOWS
@@ -49,6 +50,21 @@ inline uint popcnt(uint64_t mask)
 inline uint64_t rotr(uint64_t mask, uint n)
 {
 	return rotr64(mask, n);
+}
+
+inline uint8_t rotr(uint8_t mask, uint n)
+{
+	return std::rotr(mask, (int)n);
+}
+
+inline uint16_t rotr(uint16_t mask, uint n)
+{
+	return std::rotr(mask, (int)n);
+}
+
+inline uint32_t rotr(uint32_t mask, uint n)
+{
+	return std::rotr(mask, (int)n);
 }
 
 inline uint64_t pdep(uint64_t data, uint64_t mask)

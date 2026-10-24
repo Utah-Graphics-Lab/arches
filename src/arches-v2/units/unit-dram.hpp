@@ -57,6 +57,7 @@ private:
 
 	uint _num_req_piplines{2};
 	uint _pending_requests = 0;
+	uint _pending_stores = 0;
 	bool _busy{false};
 
 	paddr_t _partition_mask{0x0ull};
@@ -88,6 +89,15 @@ public:
 
 	void clock_rise() override;
 	void clock_fall() override;
+
+	bool has_work() override
+	{
+		if (_pending_requests > 0 || _pending_stores > 0) return true;
+		for (auto& controller : _controllers)
+			for (auto& pipline : controller.req_piplines)
+				if (!pipline.empty()) return true;
+		return _request_network.has_pending() || _return_network.has_pending();
+	}
 
 	void print_stats(uint32_t const word_size, cycles_t cycle_count);
 	float total_power();

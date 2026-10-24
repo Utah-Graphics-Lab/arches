@@ -119,11 +119,15 @@ bool UnitDRAMRamulator::_load(const MemoryRequest& request, uint channel_index)
 bool UnitDRAMRamulator::_store(const MemoryRequest& request, uint channel_index)
 {
 	//interface with ramulator
+	//A merged write calls back before this returns, count the store first
+	_pending_stores++;
 	bool enqueue_success = _controllers[channel_index].ramulator2_frontend->receive_external_requests(1, _convert_address(request.paddr), -1, [this](Ramulator::Request& req)
-	{	// your read request callback 
+	{	// your read request callback
+		// controller is done with the write
 #if ENABLE_DRAM_DEBUG_PRINTS
 		printf("Load(%d): 0x%llx(%d, %d, %d, %lld, %d)\n", request.port, request.paddr, req.addr_vec[0], req.addr_vec[1], req.addr_vec[2], req.addr_vec[3], req.addr_vec[4]);
 #endif
+		_pending_stores--;
 	});
 
 	//Masked write
@@ -133,6 +137,8 @@ bool UnitDRAMRamulator::_store(const MemoryRequest& request, uint channel_index)
 		log.stores++;
 		log.bytes_written += request.size;
 	}
+	else
+		_pending_stores--;
 
 	return enqueue_success;
 }
@@ -141,7 +147,7 @@ void UnitDRAMRamulator::clock_rise()
 {
 	_request_network.clock();
 	
-	bool busy = _pending_requests > 0;
+	bool busy = _pending_requests > 0 || _pending_stores > 0;
 	for(uint i = 0; i < _request_network.num_sinks(); ++i)
 	{
 		uint controller_index = i / _num_req_piplines;
