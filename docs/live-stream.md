@@ -151,9 +151,12 @@ All counters are deltas for the interval, not running totals.
 
 | Key | Arrays |
 | --- | --- |
-| `l1d` (one per TM), `l2`, `l3` (one per partition) | `hits`, `half_misses`, `misses`, `mshr_stalls`, `bytes_read` |
+| `l1d` (one per TM), `l2`, `l3` (one per partition) | `hits`, `half_misses`, `misses`, `mshr_stalls`, `bytes_read`, `bytes_written` |
+| `l1d` only | `load_requests`, `store_requests`, `texture_requests`, `rt_requests` |
 | `dram` (one per partition) | `bytes_read`, `loads`, `stores` |
 | `rtc` (one per TM, empty without RT cores) | `rays` |
+
+`bytes_written` counts store bytes a cache passed on toward DRAM. Stores bypass every cache (`omit_cache` is set for all levels), so each level passes on the same bytes, and DRAM writes them. The L1d$ request arrays split the requests the cache accepted by client port: TPs use ports `[0, num_tps)` (their stores are counted apart as `store_requests`), the texture unit its own port, and the RT core the rest. Over a whole run the four sum to `hits + half_misses + misses` plus the chip's L1d$ `uncached_requests`; per interval they can differ a little, because a miss is counted a few cycles after its request is accepted. The chip-level `l1d`, `l2` and `l3` objects don't carry these fields.
 
 ### DONE
 

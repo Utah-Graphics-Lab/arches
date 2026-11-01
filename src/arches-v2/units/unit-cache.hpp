@@ -121,7 +121,7 @@ public:
 	class Log
 	{
 	public:
-		const static uint NUM_COUNTERS = 10;
+		const static uint NUM_COUNTERS = 11;
 		union
 		{
 			struct
@@ -135,10 +135,15 @@ public:
 				uint64_t tag_array_access;
 				uint64_t data_array_reads;
 				uint64_t data_array_writes;
+				//stores passed on toward DRAM (stores bypass the caches) and their bytes: the write traffic to the next level
+				uint64_t stores;
+				uint64_t bytes_written;
 			};
 			uint64_t counters[NUM_COUNTERS];
 		};
 		std::map<paddr_t, uint64_t> profile_counters;
+		//requests accepted per client port, so the live stream can tell the units sharing a cache apart
+		std::vector<uint64_t> port_requests;
 
 	public:
 		Log() { reset(); }
@@ -149,6 +154,7 @@ public:
 				counters[i] = 0;
 
 			profile_counters.clear();
+			std::fill(port_requests.begin(), port_requests.end(), 0);
 		}
 
 		void accumulate(const Log& other)
@@ -158,6 +164,11 @@ public:
 
 			for(auto& a : other.profile_counters)
 				profile_counters[a.first] += a.second;
+
+			if(port_requests.size() < other.port_requests.size())
+				port_requests.resize(other.port_requests.size(), 0);
+			for(uint i = 0; i < other.port_requests.size(); ++i)
+				port_requests[i] += other.port_requests[i];
 		}
 
 		uint64_t get_total() { return hits + half_misses + misses; }

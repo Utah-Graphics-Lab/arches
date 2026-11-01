@@ -104,6 +104,9 @@ void UnitCache::_recive_request()
 			}
 
 			MemoryRequest request = bank.request_pipline.peek();
+			if(request.port >= log.port_requests.size()) log.port_requests.resize(request.port + 1, 0);
+			log.port_requests[request.port]++;
+
 			paddr_t sector_addr = _get_sector_addr(request.paddr);
 			paddr_t sector_offset = _get_sector_offset(request.paddr);
 			uint8_t sector_index = _get_sector_index(request.paddr);
@@ -116,6 +119,11 @@ void UnitCache::_recive_request()
 				request.port = slice.mem_higher_port;
 				slice.mem_higher_request_queue.push(request);
 				log.uncached_requests++;
+				if(request.type == MemoryRequest::Type::STORE)
+				{
+					log.stores++;
+					log.bytes_written += request.size;
+				}
 			}
 			else if(request.type == MemoryRequest::Type::LOAD)
 			{

@@ -928,9 +928,9 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	//per-unit counters for the visualizer's heatmaps; must run before delta_log resets the unit logs
 	auto snapshot_units = [&]() -> std::string
 	{
-		auto write_caches = [](JsonWriter& json, const char* key, const std::vector<UnitL1Cache*>& caches)
+		auto write_caches = [](JsonWriter& json, const char* key, const std::vector<UnitL1Cache*>& caches, bool end = true)
 		{
-			std::vector<uint64_t> hits, half_misses, misses, mshr_stalls, bytes_read;
+			std::vector<uint64_t> hits, half_misses, misses, mshr_stalls, bytes_read, bytes_written;
 			for(auto& cache : caches)
 			{
 				hits.push_back(cache->log.hits);
@@ -938,6 +938,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 				misses.push_back(cache->log.misses);
 				mshr_stalls.push_back(cache->log.mshr_stalls);
 				bytes_read.push_back(cache->log.bytes_read);
+				bytes_written.push_back(cache->log.bytes_written);
 			}
 			json.begin_object(key)
 				.counters("hits", hits)
@@ -945,12 +946,39 @@ static void run_sim_trax(SimulationConfig& sim_config)
 				.counters("misses", misses)
 				.counters("mshr_stalls", mshr_stalls)
 				.counters("bytes_read", bytes_read)
-				.end_object();
+				.counters("bytes_written", bytes_written);
+			if(end) json.end_object();
 		};
 
 		JsonWriter json;
 		json.begin_object();
-		write_caches(json, "l1d", l1ds);
+
+		//L1d$ requests by the unit that sent them, told apart by client port: TPs use ports [0, num_tps),
+		//the texture unit its own port, the RT core the rest. Only TPs send stores.
+		write_caches(json, "l1d", l1ds, false);
+		{
+			std::vector<uint64_t> loads, stores, texture, rt;
+			for(auto& cache : l1ds)
+			{
+				uint64_t tp = 0, tu = 0, other = 0;
+				for(uint p = 0; p < cache->log.port_requests.size(); ++p)
+				{
+					uint64_t n = cache->log.port_requests[p];
+					if(p < num_tps) tp += n;
+					else if(!tus.empty() && p == tu_config.cache_port) tu += n;
+					else other += n;
+				}
+				stores.push_back(cache->log.stores);
+				loads.push_back(tp - std::min(tp, cache->log.stores));
+				texture.push_back(tu);
+				rt.push_back(other);
+			}
+			json.counters("load_requests", loads)
+				.counters("store_requests", stores)
+				.counters("texture_requests", texture)
+				.counters("rt_requests", rt)
+				.end_object();
+		}
 		write_caches(json, "l2", l2s);
 		write_caches(json, "l3", l3s);
 
