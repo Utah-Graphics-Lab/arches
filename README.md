@@ -50,7 +50,7 @@ make
 After these steps are completed, users are able to use `riscv64-uknown-elf-gcc` to compile C code and `riscv64-unknown-elf-g++` to compile C/C++ code. 
 
 ## Hardware Configuration
-The simulated hardware (clocks, number of TMs and TPs, DRAM, and cache parameters) is described in `src/arches-v2/hardware/example.yaml`. The simulator reads this file at startup, so changing a parameter does not require a rebuild. Every parameter is documented in the file. The same folder holds presets (`rtx-2060.yaml`, `rtx-2080.yaml`, `rtx-3070.yaml`, `rtx-4090.yaml`, `trax-1.0.yaml`) that can be copied over `example.yaml`.
+The simulated hardware (clocks, number of TMs and TPs, DRAM, and cache parameters) is described in `hardware/example.yaml`. The simulator reads this file at startup, so changing a parameter does not require a rebuild. Every parameter is documented in the file. The same folder holds presets (`rtx-2060.yaml`, `rtx-2080.yaml`, `rtx-3070.yaml`, `rtx-4090.yaml`, `trax-1.0.yaml`) that can be copied over `example.yaml`.
 
 Any parameter can also be set on the command line, which takes priority over the file:
 ```
