@@ -1,5 +1,6 @@
 #pragma once
 #include "stdafx.hpp"
+#include <yaml-cpp/yaml.h>
 
 #include "simulator/simulator.hpp"
 
@@ -210,6 +211,8 @@ public:
 
 private:
 	std::map<std::string, Param> _params;
+	std::vector<std::pair<std::string, std::vector<std::string>>> _sweeps; //params with a list of values, one run per combination
+	uint _run{0};
 
 public:
 	SimulationConfig(int argc, char* argv[])
@@ -231,6 +234,9 @@ public:
 		set_param("bvh-preset", 0);
 		set_param("bvh-merging", 0);
 
+		//Hardware
+		parse_file(get_project_folder_path() + "src/arches-v2/hardware/example.yaml");
+
 		for(uint i = 1; i < argc; ++i)
 		{
 			std::string arg(argv[i]);
@@ -246,6 +252,23 @@ public:
 
 			parse_param(key, value);
 		}
+	}
+
+	//applies the next combination of swept params, returns false once all of them have been run
+	bool next_run()
+	{
+		uint num_runs = 1;
+		for(auto& sweep : _sweeps) num_runs *= sweep.second.size();
+		if(_run >= num_runs) return false;
+
+		uint index = _run;
+		for(auto& sweep : _sweeps)
+		{
+			set_value(sweep.first, sweep.second[index % sweep.second.size()]);
+			index /= sweep.second.size();
+		}
+		set_param("image-name", num_runs > 1 ? "out-" + std::to_string(_run) + ".png" : std::string("out.png"));
+		_run++;
 
 		set_param("arch-id", -1);
 		for(int i = 0; i < arch_names.size(); ++i)
@@ -263,6 +286,7 @@ public:
 		camera = rtm::Camera(get_int("framebuffer-width"), get_int("framebuffer-height"), scene_configs[scene_id].focal_length, scene_configs[scene_id].cam_pos, scene_configs[scene_id].cam_target);
 
 		print();
+		return true;
 	}
 
 	int get_int(const std::string& key) const
@@ -309,7 +333,44 @@ public:
 		_params[key].s = std::string(value);
 	}
 
+	//a yaml map of params, a value that starts with a digit is an int
+	void parse_file(const std::string& path)
+	{
+		YAML::Node config = YAML::LoadFile(path);
+		for(const auto& entry : config)
+		{
+			std::string value;
+			if(entry.second.IsSequence())
+				for(const auto& element : entry.second)
+					value += (value.empty() ? "" : ",") + element.as<std::string>();
+			else
+				value = entry.second.as<std::string>();
+
+			std::string key = entry.first.as<std::string>();
+			if(isdigit(value[0])) set_param(key, 0);
+			else                  set_param(key, value);
+			parse_param(key, value);
+		}
+	}
+
+	//a comma separated list (e.g. 1,2,4,8, or a yaml list in the hardware file) sweeps the param
 	void parse_param(const std::string& key, const std::string& str)
+	{
+		std::erase_if(_sweeps, [&](const auto& sweep) { return sweep.first == key; });
+		if(_params.count(key) && str.find(',') != std::string::npos)
+		{
+			std::vector<std::string> values;
+			for(size_t pos = 0, end; pos <= str.size(); pos = end + 1)
+			{
+				end = std::min(str.find(',', pos), str.size());
+				values.push_back(str.substr(pos, end - pos));
+			}
+			_sweeps.push_back({key, values});
+		}
+		else set_value(key, str);
+	}
+
+	void set_value(const std::string& key, const std::string& str)
 	{
 		if(_params.count(key))
 		{
