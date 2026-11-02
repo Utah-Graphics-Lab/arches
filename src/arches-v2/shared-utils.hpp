@@ -233,9 +233,7 @@ public:
 		set_param("pregen-bounce", 1);
 		set_param("bvh-preset", 0);
 		set_param("bvh-merging", 0);
-
-		//Hardware
-		parse_file(get_project_folder_path() + "src/arches-v2/hardware/example.yaml");
+		set_param("hardware", "hardware/example.yaml");
 
 		for(uint i = 1; i < argc; ++i)
 		{
@@ -249,9 +247,10 @@ public:
 			std::string key = arg.substr(start_pos, split_pos - start_pos);
 			split_pos++;
 			std::string value = arg.substr(split_pos, arg.size() - split_pos);
-
 			parse_param(key, value);
 		}
+
+		parse_file(get_project_folder_path() + get_string("hardware"));
 	}
 
 	//applies the next combination of swept params, returns false once all of them have been run
