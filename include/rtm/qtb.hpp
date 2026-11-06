@@ -62,9 +62,15 @@ inline bool compress(const uint* prim_ids, uint num_tris, const Mesh& mesh, QTB&
 	}
 
 	uint max_pfx = 24;
+#if defined __aarch64__
+	uint px = min((uint)((mask_x << 8) ? __builtin_clz(mask_x << 8) : 32), max_pfx);
+	uint py = min((uint)((mask_y << 8) ? __builtin_clz(mask_y << 8) : 32), max_pfx);
+	uint pz = min((uint)((mask_z << 8) ? __builtin_clz(mask_z << 8) : 32), max_pfx);
+#else
 	uint px = min(_lzcnt_u32(mask_x << 8), max_pfx);
 	uint py = min(_lzcnt_u32(mask_y << 8), max_pfx);
 	uint pz = min(_lzcnt_u32(mask_z << 8), max_pfx);
+#endif
 	uint nx = 24 - px;
 	uint ny = 24 - py;
 	uint nz = 24 - pz;

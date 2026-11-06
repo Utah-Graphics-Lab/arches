@@ -218,7 +218,7 @@ static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const
 	for(uint32_t i = 0; i < mesh.materials.size(); ++i)
 		mesh.materials[i].albedo_texture.texels = nullptr;  // to not free device memory textures
 
-	size_t temp = TRAX_KERNEL_ARGS_ADDRESS;
+	paddr_t temp = TRAX_KERNEL_ARGS_ADDRESS;
 	write_array(drams, xbar, 256, (uint8_t*)&args, sizeof(TRaXKernelArgs), temp);
 	return args;
 }

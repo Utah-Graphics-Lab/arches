@@ -17,6 +17,19 @@
 
 namespace rtm {
 
+#if defined __aarch64__
+inline uint64_t _pdep_u64_sw(uint64_t data, uint64_t mask)
+{
+	uint64_t result = 0;
+	for (uint64_t bit = 1; mask; bit <<= 1) {
+		if (data & bit)
+			result |= mask & (-mask);
+		mask &= mask - 1;
+	}
+	return result;
+}
+#endif
+
 union BVHPtr
 {
 	struct
@@ -241,10 +254,16 @@ private:
 			rtm::vec3 centroid(build_object.aabb.centroid() - aabb.min);
 			centroid = centroid * scale * max;
 
-			build_object.morton_code = 
+			build_object.morton_code =
+#if defined __aarch64__
+				_pdep_u64_sw((uint32_t)centroid.x, 0b0001001001001001001001001001001001001001001001001001001001001001ull) |
+				_pdep_u64_sw((uint32_t)centroid.y, 0b0010010010010010010010010010010010010010010010010010010010010010ull) |
+				_pdep_u64_sw((uint32_t)centroid.z, 0b0100100100100100100100100100100100100100100100100100100100100100ull);
+#else
 				_pdep_u64((uint32_t)centroid.x, 0b0001001001001001001001001001001001001001001001001001001001001001ull) |
 				_pdep_u64((uint32_t)centroid.y, 0b0010010010010010010010010010010010010010010010010010010010010010ull) |
 				_pdep_u64((uint32_t)centroid.z, 0b0100100100100100100100100100100100100100100100100100100100100100ull);
+#endif
 		}
 	}
 
@@ -300,7 +319,11 @@ private:
 		for(uint i = start; i < end; ++i)
 			mask |= bld_objs[i].morton_code ^ bld_objs[start].morton_code;
 
+#if defined __aarch64__
+		uint64_t prefix = mask ? __builtin_clzll(mask) : 64;
+#else
 		uint64_t prefix = _lzcnt_u64(mask);
+#endif
 		if(prefix == 64)
 			return (start + end) / 2;
 
