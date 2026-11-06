@@ -164,6 +164,12 @@ public:
 
 	void clock_fall() override;
 
+	bool has_work() override
+	{
+		bool rays_in_flight = _free_ray_ids.size() != _ray_states.size();
+		return rays_in_flight || _request_network.has_pending() || _return_network.has_pending();
+	}
+
 	bool request_port_write_valid(uint port_index) override
 	{
 		return _request_network.is_write_valid(port_index);

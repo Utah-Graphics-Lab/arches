@@ -56,6 +56,7 @@ public:
 
 	void clock_rise() override;
 	void clock_fall() override;
+	bool has_work() override;
 
 	bool request_port_write_valid(uint port_index) override;
 	void write_request(const MemoryRequest& request) override;

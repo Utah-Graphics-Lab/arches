@@ -33,7 +33,7 @@ public:
 	{
 		_request_network.clock();
 
-		if (_request_network.is_read_valid(0))
+		if (_request_network.is_read_valid(0) && !_current_request_valid) // don't overwrite a request still waiting to return
 		{
 			_current_request = _request_network.read(0);
 			_current_request_valid = true;
@@ -42,10 +42,10 @@ public:
 
 	void clock_fall() override
 	{
-		if (_current_request_valid)
+		//if the result can't be returned yet, hold the request but still clock the return network below, or it never drains
+		bool can_return = _current_request.type == MemoryRequest::Type::STORE || _return_network.is_write_valid(0);
+		if (_current_request_valid && can_return)
 		{
-			if (_current_request.type != MemoryRequest::Type::STORE && !_return_network.is_write_valid(0)) return;
-
 			uint32_t reg_index = (_current_request.paddr >> 2) & 0b1'1111;
 			uint32_t request_data = _current_request.data_u32;
 			uint32_t ret_val = iregs[reg_index];

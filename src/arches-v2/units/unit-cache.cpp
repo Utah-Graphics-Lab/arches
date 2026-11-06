@@ -35,6 +35,17 @@ UnitCache::~UnitCache()
 
 }
 
+bool UnitCache::has_work()
+{
+	for (auto& slice : _slices)
+	{
+		if (!slice.mshrs.empty() || !slice.mem_higher_request_queue.empty() || slice.miss_network.has_pending()) return true;
+		for (auto& bank : slice.banks)
+			if (!bank.request_pipline.empty() || !bank.return_pipline.empty() || bank.return_queue.is_read_valid()) return true;
+	}
+	return _request_network.has_pending() || _return_network.has_pending();
+}
+
 void UnitCache::_recive_return()
 {
 	for(uint s = 0; s < _slices.size(); ++s)

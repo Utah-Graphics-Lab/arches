@@ -23,6 +23,8 @@ private:
 	std::vector<UnitGroup> _unit_groups;
 	std::vector<Units::UnitBase*> _units;
 
+	bool _any_unit_has_work();
+
 public:
 	std::atomic_uint units_executing{0};
 	cycles_t current_cycle{0};

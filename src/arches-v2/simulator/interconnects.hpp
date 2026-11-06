@@ -145,6 +145,15 @@ public:
 	uint num_sources() const { return _num_sources; }
 	uint num_sinks() const { return _num_sinks; }
 
+	virtual bool has_pending() const
+	{
+		for (uint i = 0; i < _num_sources; ++i)
+			if (_input_pending[i]) return true;
+		for (uint i = 0; i < _num_sinks; ++i)
+			if (_output_pending[i]) return true;
+		return false;
+	}
+
 	//Owner interface
 	virtual void clock() = 0;
 
@@ -265,6 +274,15 @@ protected:
 public:
 	BufferedInterconnect(uint sources, uint sinks, uint source_fifo_depth = default_fifo_depth, uint sink_fifo_depth = default_fifo_depth) : 
 		I<T>(sources, sinks), _source_fifos(sources), _sink_fifos(sinks), _source_fifo_depth(source_fifo_depth), _sink_fifo_depth(sink_fifo_depth) {}
+
+	bool has_pending() const override
+	{
+		for (const auto& fifo : _source_fifos)
+			if (!fifo.empty()) return true;
+		for (const auto& fifo : _sink_fifos)
+			if (!fifo.empty()) return true;
+		return false;
+	}
 
 	virtual void clock() override
 	{

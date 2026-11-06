@@ -78,6 +78,11 @@ private:
 			for(uint i = 0; i < sizeof(rtm::Hit) / sizeof(float); ++i)
 				float_regs_pending[instr.rd + i] = (uint8_t)ISA::RISCV::InstrType::CUSTOM7;
 		}
+		else if(instr_info.instr_type == ISA::RISCV::InstrType::CUSTOM3) //SAMPLE2D
+		{
+			for (uint i = 0; i < 4; ++i)
+				float_regs_pending[instr.rd + i] = (uint8_t)ISA::RISCV::InstrType::CUSTOM3;
+		}
 
 		else Units::UnitTP::_set_dependancies(thread_id);
 	}

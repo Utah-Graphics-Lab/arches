@@ -259,7 +259,8 @@ void UnitTP::clock_rise()
 void UnitTP::clock_fall()
 {
 	uint thread_id = _thread_exec_arbiter.get_index();
-	if(thread_id == ~0u) thread_id = _last_thread_id;
+	bool stall_only = thread_id == ~0u;
+	if(stall_only) thread_id = _last_thread_id;
 	ThreadData& thread = _thread_data[thread_id];
 
 	DecodePhase stall_phase;
@@ -293,6 +294,8 @@ void UnitTP::clock_fall()
 
 		return;
 	}
+
+	if (stall_only) return; //a halted thead decodes fine, running it again would count its halt again
 
 	_log_instruction_issue(thread_id);
 	ISA::RISCV::ExecutionItem exec_item = {thread.pc, &thread.int_regs, &thread.float_regs};
