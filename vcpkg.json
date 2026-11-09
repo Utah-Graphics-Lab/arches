@@ -1,0 +1,10 @@
+{
+  "name": "arches",
+  "version-string": "0.1.0",
+  "builtin-baseline": "1d021d236ed1da9923826f99f420bd0370e6aad0",
+  "dependencies": [
+    "tbb",
+    "yaml-cpp",
+    "spdlog"
+  ]
+}

@@ -298,6 +298,61 @@ namespace Arches
 				simulator.register_unit(sfu_list.back());
 				unit_table[(uint)ISA::RISCV::InstrType::CUSTOM2] = sfu_list.back();
 #endif
+	ELF elf(sim_config.get_string("kernel-path"));
+
+	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM0] = "FCHTHRD";
+	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM1] = "BOXISECT";
+	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM2] = "TRIISECT";
+	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM3] = "SAMPLE2D";
+	ISA::RISCV::InstructionTypeNameDatabase::get_instance()[ISA::RISCV::InstrType::CUSTOM7] = "TRACERAY";
+	ISA::RISCV::isa[ISA::RISCV::CUSTOM_OPCODE0] = ISA::RISCV::TRaX::custom0;
+
+	uint num_sfus = static_cast<uint>(ISA::RISCV::InstrType::NUM_TYPES) * num_tms;
+
+	Simulator simulator;
+	std::vector<Units::UnitTP*> tps;
+	std::vector<Units::UnitSFU*> sfus;
+	std::vector<Units::UnitThreadScheduler*> thread_schedulers;
+	std::vector<UnitRTCore*> rtcs;
+	std::vector<Units::UnitTexture*> tus;
+	std::vector<UnitL1Cache*> l1ds;
+	std::vector<std::vector<Units::UnitBase*>> unit_tables; unit_tables.reserve(num_tms);
+	std::vector<std::vector<Units::UnitSFU*>> sfu_lists; sfu_lists.reserve(num_tms);
+	std::vector<std::vector<Units::UnitMemoryBase*>> mem_lists; mem_lists.reserve(num_tms);
+
+	//construct memory partitions
+	std::vector<UnitDRAM*> drams;
+	std::vector<UnitL2Cache*> l2s;
+	dram_config.num_ports = l2_config.num_slices;
+	l2_config.num_ports = l2_config.num_slices;
+	for(uint i = 0; i < num_partitions; ++i)
+	{
+		drams.push_back(_new UnitDRAM(dram_config));
+		simulator.register_unit(drams.back());
+
+		l2_config.mem_higher_port = 0;
+		l2_config.mem_highers = {drams.back()};
+		l2s.push_back(_new UnitL2Cache(l2_config));
+		simulator.register_unit(l2s.back());
+		simulator.new_unit_group();
+
+		xbar_config.mem_highers.push_back(l2s.back());
+	}
+
+	xbar_config.num_clients = num_tms;
+	Units::UnitCrossbar xbar(xbar_config);
+	simulator.register_unit(&xbar);
+	simulator.new_unit_group();
+
+	std::vector<uint8_t> vec_mem;
+	vec_mem.resize(256 << 20);
+
+	paddr_t heap_address = elf.load(vec_mem.data());
+	for(uint addr = 0; addr < heap_address; addr += partition_stride)
+		drams[xbar.get_partition(addr)]->direct_write(vec_mem.data() + addr, partition_stride, xbar.strip_partition_bits(addr));
+
+	TRaXKernelArgs kernel_args = initilize_buffers((Units::UnitMainMemoryBase**)drams.data(), xbar, heap_address, sim_config, partition_stride);
+	heap_address = align_to(partition_stride, heap_address);
 
 				for (auto &sfu : sfu_list)
 					sfus.push_back(sfu);

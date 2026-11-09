@@ -37,6 +37,8 @@ public:
     {
         #if defined BUILD_PLATFORM_WINDOWS
             return (pointer)_aligned_malloc(n * sizeof(value_type), N);
+        #elif defined BUILD_PLATFORM_MACOS
+            return (pointer)aligned_alloc(N, n * sizeof(value_type));
         #elif defined BUILD_PLATFORM_LINUX
             return (pointer)aligned_alloc(N, n * sizeof(value_type));
         #endif
@@ -46,6 +48,8 @@ public:
     {
         #if defined BUILD_PLATFORM_WINDOWS
             _aligned_free(p);
+        #elif defined BUILD_PLATFORM_MACOS
+            free(p);
         #elif defined BUILD_PLATFORM_LINUX
             free(p);
         #endif

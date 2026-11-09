@@ -2,6 +2,8 @@
 #include "stdafx.hpp"
 #include <yaml-cpp/yaml.h>
 
+#include <filesystem>
+
 #include "simulator/simulator.hpp"
 
 #include "units/unit-dram.hpp"
@@ -16,10 +18,14 @@
 #include "util/elf.hpp"
 #include "isa/riscv.hpp"
 #include "rtm/rtm.hpp"
+#include "sim-config.hpp"
 
 #if defined BUILD_PLATFORM_WINDOWS
 	#include <Windows.h>
 	#define MAX_FILENAME_LENGTH MAX_PATH
+#elif defined BUILD_PLATFORM_MACOS
+	#include <climits>
+	#define MAX_FILENAME_LENGTH PATH_MAX
 #elif defined BUILD_PLATFORM_LINUX
 	#include <linux/limits.h>
 	#define MAX_FILENAME_LENGTH FILENAME_MAX
@@ -32,12 +38,71 @@ void set_full_exe_name(const char *name) {
 	strcpy(full_exe_name, name);
 }
 
-std::string get_project_folder_path()
+static std::filesystem::path get_executable_path()
 {
-	// CHAR path[MAX_PATH];
-	// GetModuleFileNameA(NULL, path, MAX_PATH);
-	std::string executable_path(full_exe_name);
-	return executable_path.substr(0, executable_path.rfind("build"));
+	std::filesystem::path executable_path(full_exe_name);
+	if(executable_path.empty())
+		return std::filesystem::current_path();
+
+	if(executable_path.is_relative())
+		executable_path = std::filesystem::absolute(executable_path);
+
+	return executable_path.lexically_normal();
+}
+
+static std::filesystem::path get_executable_folder()
+{
+	std::filesystem::path executable_path = get_executable_path();
+	if(std::filesystem::is_directory(executable_path))
+		return executable_path;
+
+	return executable_path.parent_path();
+}
+
+static std::string normalize_path_string(const std::filesystem::path& path)
+{
+	return path.lexically_normal().generic_string();
+}
+
+static std::string ensure_trailing_slash(std::string path)
+{
+	for(char& c : path)
+	{
+		if(c == '\\')
+			c = '/';
+	}
+
+	while(path.size() > 1 && path.back() == '/')
+		path.pop_back();
+
+	if(!path.empty())
+		path += "/";
+
+	return path;
+}
+
+// CMake stages config-files/ and kernels/ next to the executable, so prefer those, otherwise use the source-tree paths baked in at configure time.
+std::string get_default_config_dir()
+{
+	std::filesystem::path runtime_config_dir = get_executable_folder() / "config-files";
+	if(std::filesystem::exists(runtime_config_dir))
+		return normalize_path_string(runtime_config_dir);
+
+	return normalize_path_string(std::filesystem::path(ARCHES_DEFAULT_CONFIG_DIR));
+}
+
+std::string get_default_kernel_path()
+{
+	std::filesystem::path runtime_kernel_path = get_executable_folder() / "kernels" / "trax" / "kernel";
+	if(std::filesystem::exists(runtime_kernel_path))
+		return normalize_path_string(runtime_kernel_path);
+
+	return normalize_path_string(std::filesystem::path(ARCHES_DEFAULT_KERNEL_PATH));
+}
+
+std::string join_path(std::string dir, const std::string& name)
+{
+	return ensure_trailing_slash(dir) + name;
 }
 
 template <typename T>

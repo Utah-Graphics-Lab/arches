@@ -426,3 +426,5 @@ ext/
 src/trax-kernel/riscv/kernel.dump
 justrun.sh
 buildrun.sh
+
+.idea/*
