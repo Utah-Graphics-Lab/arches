@@ -423,5 +423,6 @@ out/
 datasets/
 
 ext/
-
-.idea/*
+src/trax-kernel/riscv/kernel.dump
+justrun.sh
+buildrun.sh

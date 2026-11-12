@@ -20,7 +20,7 @@ City features).
 
 You can find the details about our design decisions for developing Arches on its [Project Page](https://graphics.cs.utah.edu/research/projects/arches/), where you will find the related publication:
 
-> Jacob Haydel, Gaurav Bhokare, Kunnong Zeng, Pengpei Hong, Sushant Kondguli, Brian Budge, Erik Brunvand, & Cem Yuksel. (2025). Arches: [A Cycle Level Simulator for Exploring Massively Parallel Ray Tracing Architectures](https://graphics.cs.utah.edu/research/projects/arches/arches-hpg2025.pdf). *Computer Graphics Forum (Proceedings of HPG 2025)*, 44(8)
+> Jacob Haydel, Gaurav Bhokare, Kunnong Zeng, Pengpei Hong, Sushant Kondguli, Brian Budge, Erik Brunvand, & Cem Yuksel. (2025). Arches: [A Cycle Level Simulator for Exploring Massively Parallel Ray Tracing Architectures](https://graphics.cs.utah.edu/research/projects/arches/arches-hpg2025-cgf.pdf). *Computer Graphics Forum (Proceedings of HPG 2025)*, 44(8)
 
 ## Setup (Simulator)
 To clone and build the project, simply run the following commands:
@@ -31,7 +31,6 @@ mkdir build
 cd build
 cmake ..
 ```
-Or use [STARTUP_GUIDE.md](STARTUP_GUIDE.md) for the current CMake workflow, including Visual Studio setup, Linux setup, dependency installation, runtime layout, dataset paths, and kernel options.
 
 ## Setup (RISCV, Ubuntu Linux)
 Testing programs on the framework requires the use of a RISC-V Cross-Compiler. Fortunately, many many people have devoted numerous hours to getting a decent RISC-V cross compiler implemented using GCC; this is available [here](https://github.com/riscv/riscv-gnu-toolchain). 
@@ -49,6 +48,23 @@ source ~/.bashrc
 make
 ```
 After these steps are completed, users are able to use `riscv64-uknown-elf-gcc` to compile C code and `riscv64-unknown-elf-g++` to compile C/C++ code. 
+
+## Hardware Configuration
+The simulated hardware (clocks, number of TMs and TPs, DRAM, and cache parameters) is described in `hardware/example.yaml`. The simulator reads this file at startup, so changing a parameter does not require a rebuild. Every parameter is documented in the file. The same folder holds presets (`rtx-2060.yaml`, `rtx-2080.yaml`, `rtx-3070.yaml`, `rtx-4090.yaml`, `trax-1.0.yaml`) that can be copied over `example.yaml`.
+
+Any parameter can also be set on the command line, which takes priority over the file:
+```
+arches-v2 --scene-name=sponza --num-tms=32
+```
+
+To sweep a parameter, give it a list of values. The simulation runs once per combination of all swept parameters and writes `out-<run>.png` for each run:
+```yaml
+# example.yaml
+num-tms: [1, 2, 4, 8, 16, 32, 64]
+```
+```
+arches-v2 --num-tms=16,32 --l1d-size-kb=32,64
+```
 
 ## Adding Custom Instructions
 A key reason we used RISC-V over other research languages (i.e. MIPS) was the ease with which RISC-V can be extended. This allows researchers to use our framework to test novel hardware designs that may rely on custom instructions for drastic performance improvements. It's important to note that this method allows progams using custom instructions to compile; however, it doesn't act as a true cross-compiler, i.e. users will need to use inline ASM to include their custom instructions.

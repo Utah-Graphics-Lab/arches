@@ -3,8 +3,6 @@
 //Determine platform
 #if defined _WIN16 || defined WIN32 || defined _WIN32 || defined WIN64 || defined _WIN64 || defined __WIN32__ || defined __TOS_WIN__ || defined __WINDOWS__
 	#define BUILD_PLATFORM_WINDOWS
-#elif defined __APPLE__
-	#define BUILD_PLATFORM_MACOS
 #elif defined __linux__
 	#define BUILD_PLATFORM_LINUX
 #endif
@@ -47,10 +45,6 @@
 #elif defined i386 || defined __i386 || defined __i386__ || defined __i486__ || defined __i586__ || defined __i686__ || defined _M_IX86 || defined _X86_ || defined __X86__
 	#define BUILD_ARCH_32
 	#define BUILD_ARCH_x86
-	#define BUILD_ARCH_ENDIAN_LITTLE
-#elif defined __aarch64__ || defined _M_ARM64
-	#define BUILD_ARCH_64
-	#define BUILD_ARCH_aarch64
 	#define BUILD_ARCH_ENDIAN_LITTLE
 #else
 	#error "Define Endianness"
@@ -123,9 +117,6 @@
 //To add breakpoints for debugging at runtime
 #if defined BUILD_PLATFORM_WINDOWS
 	#define add_breakpoint() __debugbreak()
-#elif defined BUILD_PLATFORM_MACOS
-	#include <signal.h>
-	#define add_breakpoint() raise(SIGTRAP)
 #elif defined BUILD_PLATFORM_LINUX
 	#include <signal.h>
 	#define add_breakpoint() raise(SIGINT)
@@ -141,7 +132,7 @@
 #define NOMINMAX
 
 #ifndef _DEBUG
-#include <oneapi/tbb.h>
+#include "oneapi/tbb.h"
 #endif
 
 #include <cassert>
@@ -168,8 +159,6 @@
 //Include platform intrinsics header
 #if defined BUILD_PLATFORM_WINDOWS
 	#include <intrin.h>
-#elif defined BUILD_ARCH_aarch64
-	#include <arm_neon.h>
 #elif defined BUILD_PLATFORM_LINUX
 	#include <immintrin.h>
 #endif

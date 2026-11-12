@@ -4,6 +4,11 @@
 
 namespace Arches {
 
+	/**
+	 * The following two functions add units to a "unit group" struct. 
+	 * 
+	 * TODO: figure out what the heck a unit group even does. it *seems* self-explanatory, but i feel that there may be more to it...
+	 */
 void Simulator::register_unit(Units::UnitBase * unit)
 {
 	unit->unit_id = _units.size();
@@ -18,7 +23,7 @@ void Simulator::new_unit_group()
 }
 
 #ifndef _DEBUG
-#define USE_TBB
+#define USE_TBB		//TBB is Intel's OneAPI "Thread Building Blocks" library. There doesn't appear to be any alternate threading library in use anyway.
 #endif
 
 #ifdef USE_TBB
