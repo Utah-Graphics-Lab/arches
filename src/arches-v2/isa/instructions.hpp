@@ -8,29 +8,30 @@
 #include "trax-kernel/include.hpp"
 #include "trax-kernel/intersect.hpp"
 #include "units/unit-texture.hpp"
-#include "isa/instructions.hpp"
 
 namespace Arches
 {
 
-    namespace ISA
-    {
-        namespace RISCV
-        {
-            namespace TRaX
-            {
+	namespace ISA
+	{
+		namespace RISCV
+		{
+			namespace TRaX
+			{
 
-                // see the opcode map for details
-                const inline InstructionInfo isa_custom0_000_imm[8] =
-                    {
-                        InstructionInfo(0x0, "fchthrd", InstrType::CUSTOM0, Encoding::U, RegFile::INT, MEM_REQ_DECL {
+				// see the opcode map for details
+				const inline InstructionInfo isa_custom0_000_imm[8] =
+					{
+						InstructionInfo(0x0, "fchthrd", InstrType::CUSTOM0, Encoding::U, RegFile::INT, MEM_REQ_DECL {
 		MemoryRequest req;
 		req.type = MemoryRequest::Type::LOAD;
 		req.size = sizeof(uint32_t);
 		req.dst.push(DstReg(instr.rd, RegType::UINT32).u9, 9);
 		req.vaddr = 0x0ull;
 		return req; }),
-                        InstructionInfo(0x1, "boxisect", InstrType::CUSTOM1, Encoding::U, RegFile::FLOAT, EXEC_DECL {
+
+							//box-intersection instruction
+						InstructionInfo(0x1, "boxisect", InstrType::CUSTOM1, Encoding::U, RegFile::FLOAT, EXEC_DECL {
 		Register32 * fr = unit->float_regs->registers;
 
 		rtm::Ray ray;
@@ -53,7 +54,9 @@ namespace Arches
 		aabb.max.z = fr[13].f32;
 
 		unit->float_regs->registers[instr.u.rd].f32 = rtm::intersect(aabb, ray, inv_d); }),
-                        InstructionInfo(0x2, "triisect", InstrType::CUSTOM2, Encoding::U, RegFile::FLOAT, EXEC_DECL {
+
+							//triangle-intersection instruction
+						InstructionInfo(0x2, "triisect", InstrType::CUSTOM2, Encoding::U, RegFile::FLOAT, EXEC_DECL {
 		Register32 * fr = unit->float_regs->registers;
 
 		rtm::Ray ray;
@@ -89,16 +92,17 @@ namespace Arches
 		fr[18].f32 = hit.bc[0];
 		fr[19].f32 = hit.bc[1];
 		fr[20].u32 = hit.id; }),
-                };
+				};
 
-                const inline InstructionInfo isa_custom0_funct3[8] =
-                    {
-                        InstructionInfo(0x0, META_DECL { return isa_custom0_000_imm[instr.u.imm_31_12 >> 3]; }),
-                        InstructionInfo(0x1, IMPL_NONE),
-                        InstructionInfo(0x2, IMPL_NONE),
-                        InstructionInfo(0x3, IMPL_NONE),
-                        InstructionInfo(0x4, IMPL_NONE),
-                        InstructionInfo(0x5, "traceray", InstrType::CUSTOM7, Encoding::I, RegFile::FLOAT, MEM_REQ_DECL {
+					//implementation of "traceray" instruction
+				const inline InstructionInfo isa_custom0_funct3[8] =
+					{
+						InstructionInfo(0x0, META_DECL { return isa_custom0_000_imm[instr.u.imm_31_12 >> 3]; }),
+						InstructionInfo(0x1, IMPL_NONE),
+						InstructionInfo(0x2, IMPL_NONE),
+						InstructionInfo(0x3, IMPL_NONE),
+						InstructionInfo(0x4, IMPL_NONE),
+						InstructionInfo(0x5, "traceray", InstrType::CUSTOM7, Encoding::I, RegFile::FLOAT, MEM_REQ_DECL {
 		MemoryRequest mem_req;
 		mem_req.type = MemoryRequest::Type::STORE;
 		mem_req.size = sizeof(rtm::Ray);
@@ -110,7 +114,9 @@ namespace Arches
 			((float*)mem_req.data)[i] = fr[instr.i.rs1 + i].f32;
 
 		return mem_req; }),
-                        InstructionInfo(0x6, "sample2d", InstrType::CUSTOM3, Encoding::I, RegFile::FLOAT, MEM_REQ_DECL {
+
+							//2D sampling instruction
+						InstructionInfo(0x6, "sample2d", InstrType::CUSTOM3, Encoding::I, RegFile::FLOAT, MEM_REQ_DECL {
 		Register32* fr = unit->float_regs->registers;
 
 		MemoryRequest mem_req;
@@ -128,13 +134,13 @@ namespace Arches
 		//fr[instr.i.rd + 3].f32 = 1.0f;
 
 		return mem_req; }),
-                };
+				};
 
-                const inline InstructionInfo custom0 = {CUSTOM_OPCODE0, META_DECL{return isa_custom0_funct3[instr.i.funct3];
-            }
-        };
+				const inline InstructionInfo custom0 = {CUSTOM_OPCODE0, META_DECL{return isa_custom0_funct3[instr.i.funct3];
+			}
+		};
 
-    }
+	}
 }
 }
 }

@@ -1,0 +1,53 @@
+# Hardware description for arches-v2. This is the file the simulator reads at
+# startup, so editing it needs no rebuild. The values below are the RTX 2080
+# preset; the other presets in this folder can be copied over it. Every key
+# below is required.
+#
+# Any key also works on the command line and takes priority over this file:
+#   arches-v2 --num-tms=32
+#
+# Sweeps
+#   Give a list instead of a single value to sweep a parameter. The simulation
+#   runs once per combination of all swept parameters, back to back in one
+#   process, and writes out-<run>.png for each run (out.png for a single run).
+#   The parameters printed at the top of each run identify it.
+#     num-tms: [1, 2, 4, 8, 16, 32, 64]          7 runs
+#     l1d-size-kb: [32, 64]                      together with the above, 14 runs
+#   On the command line use commas: --num-tms=1,2,4,8
+
+# ---------------------------------- Compute ----------------------------------
+core-clock-mhz: 1515      # core clock, converts cycles to frame time and MRays/s
+num-tms: 46               # thread multiprocessors, each has its own L1d$, RT core, texture unit and SFUs
+num-tps: 64               # thread processors per TM (at least 16, SFU counts are derived from it)
+num-threads: 8            # threads per TP
+stack-size: 1024          # stack bytes per thread (power of two)
+rtc-max-rays: 64          # rays the RT core of a TM holds at once
+
+# ----------------------------------- DRAM ------------------------------------
+dram-clock-mhz: 3500      # DRAM clock, simulated relative to the core clock
+num-partitions: 8         # memory partitions, each is one DRAM (1GB) behind one L2$
+dram-config: gddr6_14000_config.yaml   # Ramulator config in units/ramulator/config-files
+dram-latency: 92          # cycles added to every DRAM access
+
+# ------------------------------------ L2$ ------------------------------------
+# One L2$ per partition, shared by all TMs through the crossbar.
+l2-size-kb: 512
+l2-associativity: 16
+l2-slices: 4              # independent slices of the cache, also its number of ports
+l2-mshr: 192              # miss status holding registers (outstanding misses)
+l2-subentries: 4          # requests that can wait on one MSHR
+l2-latency: 160           # cycles
+l2-miss-alloc: 1          # 1 allocates the block when the miss is issued, 0 when the data returns
+l2-block-prefetch: 0      # 1 enables block prefetching
+l2-policy: LRU            # replacement policy: LRU, LRU_RANDOM, FIFO or FIFO_RANDOM
+
+# ----------------------------------- L1d$ ------------------------------------
+# One L1d$ per TM.
+l1d-size-kb: 64
+l1d-associativity: 32
+l1d-banks: 16             # banks of the cache, also its crossbar width
+l1d-mshr: 256
+l1d-subentries: 16
+l1d-latency: 20           # cycles
+l1d-miss-alloc: 1
+l1d-policy: LRU
