@@ -34,7 +34,8 @@ struct MemoryRequest
 	{
 		uint8_t omit_cache : 4;
 		uint8_t trigger_prefetch : 1;
-		uint8_t : 3;
+		uint8_t hit_level : 2; //on returns: cache level that served the data, 0 if it came from memory
+		uint8_t : 1;
 	};
 
 	const static uint MAX_SIZE = CACHE_SECTOR_SIZE;

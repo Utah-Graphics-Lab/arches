@@ -14,6 +14,11 @@ namespace Arches {
 //   STATS (2) JSON: raw counters for one logging interval
 //   FRAME (3) binary: u64 cycle, u32 width, u32 height, width * height RGBA8 pixels (bottom row first)
 //   DONE  (4) JSON: end of run summary
+//   BVH   (6) binary: BVH topology, sent once right after HELLO when HELLO has has_bvh = 1
+//   BVH_STATS (7) binary: per-node counters, per-pixel query cost and sampled traversal traces for
+//         the interval of the STATS message just before it
+// The BVH layouts are documented in units/trax/bvh-probe.hpp. Type 5 is reserved: RusticArches
+// writes its bookmarks into recordings under it.
 //
 // If no visualizer is listening, the stream disables itself and every call is a no-op.
 // Sending happens on a background thread so the simulator never blocks on the socket.
@@ -27,6 +32,8 @@ public:
 		STATS = 2,
 		FRAME = 3,
 		DONE = 4,
+		BVH = 6,
+		BVH_STATS = 7,
 	};
 
 	LiveStream(const std::string& host, uint16_t port);

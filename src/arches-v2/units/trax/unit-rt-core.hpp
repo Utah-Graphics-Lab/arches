@@ -4,6 +4,7 @@
 
 #include "../unit-base.hpp"
 #include "../unit-memory-base.hpp"
+#include "bvh-probe.hpp"
 
 namespace Arches { namespace Units { namespace TRaX {
 
@@ -101,6 +102,8 @@ private:
 
 		StagingBuffer buffer;
 
+		BvhProbe::RayTrace trace; //only used while a probe is attached
+
 		bool done;
 
 		RayState() {};
@@ -157,8 +160,13 @@ private:
 	bool _pop_culling{false};
 
 	uint _stall_cycles{0};
+
+	//live visualizer instrumentation, null unless a visualizer wants BVH data
+	BvhProbe* _probe{nullptr};
 public:
 	UnitRTCore(const Configuration& config);
+
+	void set_probe(BvhProbe* probe) { _probe = probe; }
 
 	void clock_rise() override;
 

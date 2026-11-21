@@ -198,6 +198,8 @@ void UnitRTCore<NT, PT>::_read_requests()
 		ray_state.phase = RayState::Phase::SCHEDULER;
 		_ray_scheduling_queue.push(ray_id);
 
+		if(_probe) _probe->begin_ray(ray_state.trace, ray_state.ray);
+
 		log.rays++;
 
 		//_ray_return_queue.push(ray_id);
@@ -220,6 +222,8 @@ void UnitRTCore<NT, PT>::_read_returns()
 			uint16_t ray_id = ret.dst.pop(10);
 			RayState& ray_state = _ray_states[ray_id];
 			StagingBuffer& buffer = ray_state.buffer;
+
+			if(_probe) _probe->served(buffer.type == 0 ? buffer.id : _probe->leaf_id(buffer.id), ret.flags.hit_level);
 
 			//if(ENABLE_RT_DEBUG_PRINTS) printf("ret %xll\n", ret.paddr);
 
@@ -273,6 +277,8 @@ void UnitRTCore<NT, PT>::_schedule_ray()
 				ray_state.phase = RayState::Phase::HIT_RETURN;
 				_ray_return_queue.push(ray_id);
 
+				if(_probe) _probe->end_ray(ray_state.trace, ray_state.hit.id != ~0u);
+
 				log.issue_counters[(uint)IssueType::HIT_RETURN]++;
 				if(ENABLE_RT_DEBUG_PRINTS)
 					printf("%03d HIT_RETURN: %d\n", ray_id, ray_state.hit.id);
@@ -313,6 +319,7 @@ void UnitRTCore<NT, PT>::_schedule_ray()
 			if(entry.data.is_int)
 			{
 				_try_queue_node(ray_id, entry.data.child_idx);
+				if(_probe) _probe->visit(ray_state.trace, entry.data.child_idx);
 				ray_state.phase = RayState::Phase::NODE_FETCH;
 
 				log.issue_counters[(uint)IssueType::NODE_FETCH]++;
@@ -322,6 +329,7 @@ void UnitRTCore<NT, PT>::_schedule_ray()
 			else
 			{
 				_try_queue_tri(ray_id, entry.data.prim_idx);
+				if(_probe) _probe->visit(ray_state.trace, _probe->leaf_id(entry.data.prim_idx));
 				if(entry.data.prim_cnt > 1)
 				{
 					entry.data.prim_cnt--;
@@ -484,7 +492,12 @@ void UnitRTCore<NT, PT>::_issue_tri_isect(uint pipline_index)
 
 			for(uint i = 0; i < tri_count; ++i)
 				if(rtm::intersect(tris[i].tri, ray, hit))
+				{
 					hit.id = tris[i].id;
+					if(_probe) ray_state.trace.hit_leaf = _probe->leaf_id(buffer.id);
+				}
+
+			if(_probe) _probe->tri_tests(_probe->leaf_id(buffer.id), tri_count);
 
 			_tri_pipline.write(ray_id);
 			_tri_isect_queue.pop();

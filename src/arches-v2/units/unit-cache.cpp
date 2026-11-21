@@ -61,7 +61,9 @@ void UnitCache::_recive_return()
 					{
 						MemoryRequest& sube_req = mshr.subentries.front();
 						uint sector_offset = _get_sector_offset(sube_req.paddr);
-						bank.return_pipline.write(MemoryReturn(sube_req, ret.data + sector_offset));
+						MemoryReturn sube_ret(sube_req, ret.data + sector_offset);
+						sube_ret.flags.hit_level = ret.flags.hit_level; //pass on the level that served the fill
+						bank.return_pipline.write(sube_ret);
 						mshr.subentries.pop();
 					}
 
@@ -134,7 +136,9 @@ void UnitCache::_recive_request()
 				if(sector_data)
 				{
 					//Hit: fill request and insert into return queue
-					bank.return_queue.write(MemoryReturn(request, sector_data + sector_offset));
+					MemoryReturn hit_ret(request, sector_data + sector_offset);
+					hit_ret.flags.hit_level = _level;
+					bank.return_queue.write(hit_ret);
 					log.data_array_reads++;
 					log.hits++;
 				}

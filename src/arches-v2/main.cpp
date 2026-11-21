@@ -164,7 +164,8 @@ typedef Units::UnitCache UnitL1Cache;
 typedef rtm::FTB PrimBlocks;
 typedef Units::TRaX::UnitRTCore<rtm::CWBVH::Node, PrimBlocks> UnitRTCore;
 
-static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const Units::UnitCrossbar& xbar, paddr_t& heap_address, const SimulationConfig& sim_config, uint page_size)
+static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const Units::UnitCrossbar& xbar, paddr_t& heap_address, const SimulationConfig& sim_config, uint page_size,
+	Units::TRaX::BvhProbeShared& bvh_shared, std::vector<uint8_t>& bvh_message)
 {
 	std::string scene_name = sim_config.get_string("scene-name");
 	std::string datasets_folder = ensure_trailing_slash(sim_config.get_string("dataset-dir"));
@@ -186,6 +187,18 @@ static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const
 
 	rtm::Mesh mesh(datasets_folder + scene_name + ".obj");
 	rtm::CWBVH bvh(mesh, (cache_folder + scene_name + ".bvh").c_str(), sim_config.get_int("bvh-preset"), sim_config.get_int("bvh-merging"));
+
+#if !USE_HECWBVH_V1
+	//BVH topology for the live visualizer's treemap; node ids only line up with the RT core for the HE2CWBVH layout
+	if(sim_config.get_int("bvh-stream") != 0)
+	{
+		bvh_shared.camera = args.camera;
+		bvh_shared.width = args.framebuffer_width;
+		bvh_shared.height = args.framebuffer_height;
+		bvh_shared.trace_stride = sim_config.get_int("bvh-trace-stride");
+		bvh_message = Units::TRaX::BvhProbe::build_topology(bvh, bvh_shared);
+	}
+#endif
 
 	std::vector<rtm::Ray> rays(args.framebuffer_size);
 	if(args.pregen_rays)
@@ -649,7 +662,9 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	for(uint addr = 0; addr < heap_address; addr += partition_stride)
 		drams[xbar.get_partition(addr)]->direct_write(vec_mem.data() + addr, partition_stride, xbar.strip_partition_bits(addr));
 
-	TRaXKernelArgs kernel_args = initilize_buffers((Units::UnitMainMemoryBase**)drams.data(), xbar, heap_address, sim_config, partition_stride);
+	Units::TRaX::BvhProbeShared bvh_shared;
+	std::vector<uint8_t> bvh_message;
+	TRaXKernelArgs kernel_args = initilize_buffers((Units::UnitMainMemoryBase**)drams.data(), xbar, heap_address, sim_config, partition_stride, bvh_shared, bvh_message);
 	heap_address = align_to(partition_stride, heap_address);
 
 	for(uint addr = 0; addr < (256 << 20); addr += partition_stride)
@@ -848,6 +863,19 @@ static void run_sim_trax(SimulationConfig& sim_config)
 	uint64_t live_tp_prev[3][num_instr_types] = {};
 	std::vector<uint64_t> live_tp_issued_prev(tps.size(), 0);
 
+	//per-RT-core BVH instrumentation, attached only when a visualizer is listening
+	bool live_bvh = live_stream.connected() && !rtcs.empty() && !bvh_message.empty();
+	std::vector<Units::TRaX::BvhProbe> bvh_probes;
+	if(live_bvh)
+	{
+		bvh_probes.reserve(rtcs.size()); //the RT cores keep pointers into this vector
+		for(auto& rtc : rtcs)
+		{
+			bvh_probes.emplace_back(&bvh_shared);
+			rtc->set_probe(&bvh_probes.back());
+		}
+	}
+
 	std::vector<uint8_t> live_framebuffer;
 	auto read_framebuffer = [&]() -> const uint8_t*
 	{
@@ -906,6 +934,7 @@ static void run_sim_trax(SimulationConfig& sim_config)
 			.value("framebuffer_width", kernel_args.framebuffer_width)
 			.value("framebuffer_height", kernel_args.framebuffer_height)
 			.value("has_rt_core", (uint)!rtcs.empty())
+			.value("has_bvh", (uint)live_bvh)
 			.value("tms_per_l2", (uint)(num_tms / l2s.size()))
 			.raw("topology", topology.json())
 			.begin_object("dram")
@@ -920,6 +949,12 @@ static void run_sim_trax(SimulationConfig& sim_config)
 			json.value(nullptr, ISA::RISCV::InstructionTypeNameDatabase::get_instance()[(ISA::RISCV::InstrType)i]);
 		json.end_array().end_object();
 		live_stream.send(LiveStream::MessageType::HELLO, json.str());
+
+		if(live_bvh)
+		{
+			live_stream.send(LiveStream::MessageType::BVH, bvh_message.data(), bvh_message.size());
+			bvh_message = std::vector<uint8_t>();
+		}
 	}
 
 	//peak_dram_bandwidth = 32 * core_clock * num_partitions;
@@ -1069,6 +1104,13 @@ static void run_sim_trax(SimulationConfig& sim_config)
 			.raw("units", units_json)
 			.end_object();
 		live_stream.send(LiveStream::MessageType::STATS, json.str());
+
+		//per-node and per-ray BVH data for the same interval, right behind its STATS
+		if(live_bvh)
+		{
+			std::vector<uint8_t> bvh_stats = Units::TRaX::BvhProbe::collect(bvh_probes, simulator.current_cycle);
+			live_stream.send(LiveStream::MessageType::BVH_STATS, bvh_stats.data(), bvh_stats.size());
+		}
 	};
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -1263,6 +1305,8 @@ int main(int argc, char* argv[])
 	sim_config.set_param("live-host", "127.0.0.1");
 	sim_config.set_param("live-port", 7878);
 	sim_config.set_param("live-frame-interval", 10);
+	sim_config.set_param("bvh-stream", 1);
+	sim_config.set_param("bvh-trace-stride", 16);
 	sim_config.parse(argc, argv);
 
 	Arches::TRaX::run_sim_trax(sim_config);
