@@ -315,6 +315,54 @@ public:
 
 		return out;
 	}
+
+	// MESH payload, for the visualizer's 3D view:
+	//   u32 version = 1
+	//   f32 camera position[3], x[3], y[3], z[3]   (rtm::Camera's basis: ray d = x*u + y*v - z, u and v in -0.5..0.5)
+	//   f32 bounds min[3], max[3]                 (of every vertex)
+	//   u32 triangle count
+	//   per triangle, in leaf order (leaf 0's triangles, then leaf 1's, ...): 3 vertices x 3 u16, each
+	//   coordinate quantized as round((v - min) / (max - min) * 65535)
+	static std::vector<uint8_t> build_mesh(const rtm::HE2CWBVH& bvh, const rtm::Camera& camera)
+	{
+		std::vector<rtm::Triangle> tris;
+		for(const rtm::FTB& ftb : bvh.ftbs)
+		{
+			rtm::IntersectionTriangle block[rtm::FTB::MAX_TRIS];
+			uint count = rtm::decompress(ftb, block);
+			for(uint i = 0; i < count; ++i) tris.push_back(block[i].tri);
+		}
+
+		rtm::AABB bounds;
+		for(const rtm::Triangle& tri : tris)
+			for(uint i = 0; i < 3; ++i) bounds.add(tri.vrts[i]);
+
+		std::vector<uint8_t> out;
+		out.reserve(4 + 18 * 4 + 4 + tris.size() * 18);
+		_put(out, (uint32_t)1);
+		for(const rtm::vec3& v : {camera._position, camera._x, camera._y, camera._z})
+		{
+			_put(out, v.x); _put(out, v.y); _put(out, v.z);
+		}
+		_put(out, bounds.min.x); _put(out, bounds.min.y); _put(out, bounds.min.z);
+		_put(out, bounds.max.x); _put(out, bounds.max.y); _put(out, bounds.max.z);
+		_put(out, (uint32_t)tris.size());
+
+		auto quantize = [](float v, float lo, float hi) -> uint16_t
+		{
+			if(!(hi > lo)) return 0;
+			float t = (v - lo) / (hi - lo) * 65535.0f + 0.5f;
+			return (uint16_t)std::min(std::max(t, 0.0f), 65535.0f);
+		};
+		for(const rtm::Triangle& tri : tris)
+			for(uint i = 0; i < 3; ++i)
+			{
+				_put(out, quantize(tri.vrts[i].x, bounds.min.x, bounds.max.x));
+				_put(out, quantize(tri.vrts[i].y, bounds.min.y, bounds.max.y));
+				_put(out, quantize(tri.vrts[i].z, bounds.min.z, bounds.max.z));
+			}
+		return out;
+	}
 #endif
 
 private:

@@ -165,7 +165,7 @@ typedef rtm::FTB PrimBlocks;
 typedef Units::TRaX::UnitRTCore<rtm::CWBVH::Node, PrimBlocks> UnitRTCore;
 
 static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const Units::UnitCrossbar& xbar, paddr_t& heap_address, const SimulationConfig& sim_config, uint page_size,
-	Units::TRaX::BvhProbeShared& bvh_shared, std::vector<uint8_t>& bvh_message)
+	Units::TRaX::BvhProbeShared& bvh_shared, std::vector<uint8_t>& bvh_message, std::vector<uint8_t>& mesh_message)
 {
 	std::string scene_name = sim_config.get_string("scene-name");
 	std::string datasets_folder = ensure_trailing_slash(sim_config.get_string("dataset-dir"));
@@ -197,6 +197,7 @@ static TRaXKernelArgs initilize_buffers(Units::UnitMainMemoryBase** drams, const
 		bvh_shared.height = args.framebuffer_height;
 		bvh_shared.trace_stride = sim_config.get_int("bvh-trace-stride");
 		bvh_message = Units::TRaX::BvhProbe::build_topology(bvh, bvh_shared);
+		mesh_message = Units::TRaX::BvhProbe::build_mesh(bvh, args.camera);
 	}
 #endif
 
@@ -663,8 +664,8 @@ static void run_sim_trax(SimulationConfig& sim_config)
 		drams[xbar.get_partition(addr)]->direct_write(vec_mem.data() + addr, partition_stride, xbar.strip_partition_bits(addr));
 
 	Units::TRaX::BvhProbeShared bvh_shared;
-	std::vector<uint8_t> bvh_message;
-	TRaXKernelArgs kernel_args = initilize_buffers((Units::UnitMainMemoryBase**)drams.data(), xbar, heap_address, sim_config, partition_stride, bvh_shared, bvh_message);
+	std::vector<uint8_t> bvh_message, mesh_message;
+	TRaXKernelArgs kernel_args = initilize_buffers((Units::UnitMainMemoryBase**)drams.data(), xbar, heap_address, sim_config, partition_stride, bvh_shared, bvh_message, mesh_message);
 	heap_address = align_to(partition_stride, heap_address);
 
 	for(uint addr = 0; addr < (256 << 20); addr += partition_stride)
@@ -954,6 +955,8 @@ static void run_sim_trax(SimulationConfig& sim_config)
 		{
 			live_stream.send(LiveStream::MessageType::BVH, bvh_message.data(), bvh_message.size());
 			bvh_message = std::vector<uint8_t>();
+			live_stream.send(LiveStream::MessageType::MESH, mesh_message.data(), mesh_message.size());
+			mesh_message = std::vector<uint8_t>();
 		}
 	}
 

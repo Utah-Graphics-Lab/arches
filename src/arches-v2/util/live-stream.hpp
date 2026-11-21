@@ -17,6 +17,7 @@ namespace Arches {
 //   BVH   (6) binary: BVH topology, sent once right after HELLO when HELLO has has_bvh = 1
 //   BVH_STATS (7) binary: per-node counters, per-pixel query cost and sampled traversal traces for
 //         the interval of the STATS message just before it
+//   MESH  (8) binary: the camera and the scene's triangles in BVH leaf order, sent once right after BVH
 // The BVH layouts are documented in units/trax/bvh-probe.hpp. Type 5 is reserved: RusticArches
 // writes its bookmarks into recordings under it.
 //
@@ -34,6 +35,7 @@ public:
 		DONE = 4,
 		BVH = 6,
 		BVH_STATS = 7,
+		MESH = 8,
 	};
 
 	LiveStream(const std::string& host, uint16_t port);
